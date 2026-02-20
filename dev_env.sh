@@ -25,46 +25,42 @@ fi
 
 
 if [[ "$COMMAND" = "build" ]]; then
-    docker build $IMAGE_PATH -t $IMAGE_NAME
+    docker build "$IMAGE_PATH" -t "$IMAGE_NAME"
     exit 0
 fi
 
 if [[ "$COMMAND" = "start" ]]; then
     docker run -it \
       --rm \
-      --name $CONTAINER_NAME \
-      --volume=/tmp/.X11-unix/:/tmp/.X11-unix/\
-      --volume=$(pwd)/$IMAGE:/home/$IMAGE \
+      --name "$CONTAINER_NAME" \
+      --volume=/tmp/.X11-unix/:/tmp/.X11-unix/ \
+      --volume="$(pwd)/$IMAGE:/home/$IMAGE" \
       --workdir="/home/$IMAGE" \
       --env HOME="/home/$IMAGE" \
-      --env DISPLAY=$DISPLAY \
-      --gpus all \
+      --env DISPLAY="$DISPLAY" \
       --privileged \
-      --env=NVIDIA_VISIBLE_DEVICES=all \
-      --env=NVIDIA_DRIVER_CAPABILITIES=all \
       --env=QT_X11_NO_MITSHM=1 \
       --net host \
-      $IMAGE_NAME /bin/bash \
+      "$IMAGE_NAME" /bin/bash \
       $EXTRA 
     exit 0
 fi
 
 
 if [[ "$COMMAND" = "bash" ]]; then
-    docker exec -it $CONTAINER_NAME /bin/bash
+    docker exec -it "$CONTAINER_NAME" /bin/bash
     exit 0
 fi
 
 
 ############## USED IN SIMULATION LOOP ################
 if [[ "$COMMAND" = "exec" ]]; then
-    docker exec -it $CONTAINER_NAME /bin/bash $EXTRA
+    docker exec -it "$CONTAINER_NAME" /bin/bash $EXTRA
     exit 0
 fi  
 
-
 if [[ "$COMMAND" = "topic" ]]; then
-    docker exec $CONTAINER_NAME /bin/bash $EXTRA
+    docker exec "$CONTAINER_NAME" /bin/bash $EXTRA
     exit 0
 fi  
 #######################################################

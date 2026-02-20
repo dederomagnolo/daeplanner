@@ -1,0 +1,9 @@
+<launch>
+  <!-- Load custom forest world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find drone_gazebo)/worlds/simple_forest.world"/>
+  </include>
+
+  <!-- Keep arg for compatibility with simulation.launch -->
+  <arg name="avoidance" default="false" />
+</launch>

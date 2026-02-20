@@ -1,0 +1,23 @@
+<launch>
+  <arg name="input_cloud_topic" default="/camera/depth/points" />
+  <arg name="output_topic" default="/tree_detections" />
+  <arg name="marker_topic" default="/tree_detections_raw_markers" />
+  <arg name="target_frame" default="world" />
+
+  <node pkg="tree_identifier" type="tree_detector_node.py" name="tree_detector_node" output="screen">
+    <param name="input_cloud_topic" value="$(arg input_cloud_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="marker_topic" value="$(arg marker_topic)" />
+    <param name="target_frame" value="$(arg target_frame)" />
+
+    <!-- tune for your map/sensor -->
+    <param name="slice_z_min" value="1.0" />
+    <param name="slice_z_max" value="1.6" />
+    <param name="cell_size" value="0.20" />
+    <param name="min_points_per_cell" value="3" />
+    <param name="min_cells_per_cluster" value="3" />
+    <param name="max_cells_per_cluster" value="200" />
+    <param name="min_diameter" value="0.10" />
+    <param name="max_diameter" value="1.20" />
+  </node>
+</launch>

@@ -1,0 +1,13 @@
+<launch>
+  <arg name="input_topic" default="/tree_detections" />
+  <arg name="output_topic" default="/tree_detections_tracked" />
+  <arg name="id_topic" default="/tree_detection_ids" />
+  <arg name="marker_topic" default="/tree_detection_markers" />
+
+  <node pkg="tree_identifier" type="tree_id_tracker.py" name="tree_id_tracker" output="screen">
+    <param name="input_topic" value="$(arg input_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="id_topic" value="$(arg id_topic)" />
+    <param name="marker_topic" value="$(arg marker_topic)" />
+  </node>
+</launch>

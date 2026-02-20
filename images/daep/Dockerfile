@@ -41,10 +41,11 @@ RUN apt-get update \
       liblapacke-dev \
       libgeographic-dev \
       ros-melodic-rqt-graph \
-      ros-melodic-rqt-gui \
-      ros-melodic-rqt-plot \
-      ros-melodic-mav-msgs \
-      ros-melodic-mav-planning-msgs \
+	      ros-melodic-rqt-gui \
+	      ros-melodic-rqt-plot \
+	      ros-melodic-tf2-sensor-msgs \
+	      ros-melodic-mav-msgs \
+	      ros-melodic-mav-planning-msgs \
       ros-melodic-nmea-msgs \
       ros-melodic-roscpp-tutorials \
       ros-melodic-octomap-* \
@@ -78,7 +79,6 @@ RUN apt-get update && apt-get install -y \
       xdg-user-dirs \
       libeigen3-dev \
       && rm -rf /var/lib/apt/lists/*
-
 
 
 
