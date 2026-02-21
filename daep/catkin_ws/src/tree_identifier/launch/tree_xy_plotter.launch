@@ -16,6 +16,15 @@
   <arg name="dedup_dist" default="1.0" />
   <arg name="update_cached_position" default="false" />
   <arg name="log_only_on_new" default="false" />
+  <arg name="enable_map_overlay" default="true" />
+  <arg name="map_pose_topic" default="/tree_map_poses" />
+  <arg name="map_id_topic" default="/tree_map_ids" />
+  <arg name="map_candidate_pose_topic" default="/tree_map_candidates" />
+  <arg name="map_candidate_id_topic" default="/tree_map_candidate_ids" />
+  <arg name="show_live_labels" default="true" />
+  <arg name="show_map_labels" default="true" />
+  <arg name="show_metrics" default="true" />
+  <arg name="max_labels" default="70" />
 
   <node pkg="tree_identifier" type="tree_xy_plotter.py" name="tree_xy_plotter" output="screen">
     <param name="pose_topic" value="$(arg pose_topic)" />
@@ -35,5 +44,14 @@
     <param name="dedup_dist" value="$(arg dedup_dist)" />
     <param name="update_cached_position" value="$(arg update_cached_position)" />
     <param name="log_only_on_new" value="$(arg log_only_on_new)" />
+    <param name="enable_map_overlay" value="$(arg enable_map_overlay)" />
+    <param name="map_pose_topic" value="$(arg map_pose_topic)" />
+    <param name="map_id_topic" value="$(arg map_id_topic)" />
+    <param name="map_candidate_pose_topic" value="$(arg map_candidate_pose_topic)" />
+    <param name="map_candidate_id_topic" value="$(arg map_candidate_id_topic)" />
+    <param name="show_live_labels" value="$(arg show_live_labels)" />
+    <param name="show_map_labels" value="$(arg show_map_labels)" />
+    <param name="show_metrics" value="$(arg show_metrics)" />
+    <param name="max_labels" value="$(arg max_labels)" />
   </node>
 </launch>

@@ -16,5 +16,6 @@ catkin_install_python(PROGRAMS
   scripts/tree_id_tracker.py
   scripts/tree_detector_node.py
   scripts/tree_xy_plotter.py
+  scripts/tree_map_fuser.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

@@ -3,11 +3,21 @@
   <arg name="output_topic" default="/tree_detections_tracked" />
   <arg name="id_topic" default="/tree_detection_ids" />
   <arg name="marker_topic" default="/tree_detection_markers" />
+  <arg name="max_match_dist" default="1.0" />
+  <arg name="max_missed_time" default="5.0" />
+  <arg name="default_radius" default="0.30" />
+  <arg name="default_height" default="2.0" />
+  <arg name="marker_lifetime" default="0.8" />
 
   <node pkg="tree_identifier" type="tree_id_tracker.py" name="tree_id_tracker" output="screen">
     <param name="input_topic" value="$(arg input_topic)" />
     <param name="output_topic" value="$(arg output_topic)" />
     <param name="id_topic" value="$(arg id_topic)" />
     <param name="marker_topic" value="$(arg marker_topic)" />
+    <param name="max_match_dist" value="$(arg max_match_dist)" />
+    <param name="max_missed_time" value="$(arg max_missed_time)" />
+    <param name="default_radius" value="$(arg default_radius)" />
+    <param name="default_height" value="$(arg default_height)" />
+    <param name="marker_lifetime" value="$(arg marker_lifetime)" />
   </node>
 </launch>
