@@ -1,18 +1,29 @@
 <launch>
+  <arg name="use_array_input" default="true" />
+  <arg name="array_topic" default="/tree_detections_tracked_full" />
   <arg name="pose_topic" default="/tree_detections_tracked" />
   <arg name="id_topic" default="/tree_detection_ids" />
 
   <arg name="output_topic" default="/tree_map_poses" />
   <arg name="output_id_topic" default="/tree_map_ids" />
+  <arg name="output_array_topic" default="/tree_map_full" />
   <arg name="candidate_topic" default="/tree_map_candidates" />
   <arg name="candidate_id_topic" default="/tree_map_candidate_ids" />
+  <arg name="candidate_array_topic" default="/tree_map_candidate_full" />
   <arg name="marker_topic" default="/tree_map_markers" />
 
-  <arg name="association_dist" default="1.5" />
-  <arg name="id_reuse_max_dist" default="2.2" />
+  <arg name="association_dist" default="0.70" />
+  <arg name="id_reuse_max_dist" default="0.95" />
+  <arg name="max_diameter_delta" default="0.45" />
+  <arg name="diameter_assoc_weight" default="0.35" />
   <arg name="min_confirmations" default="4" />
-  <arg name="max_std_xy" default="-1.0" />
+  <arg name="max_std_xy" default="0.70" />
+  <arg name="max_std_diameter" default="0.28" />
+  <arg name="min_confirmed_confidence" default="0.0" />
   <arg name="prune_unconfirmed_after_sec" default="60.0" />
+  <arg name="split_large_source_ids" default="18" />
+  <arg name="split_std_xy_threshold" default="0.45" />
+  <arg name="split_reject_dist" default="0.75" />
   <arg name="publish_rate_hz" default="2.0" />
   <arg name="publish_candidates" default="true" />
   <arg name="log_throttle_sec" default="2.0" />
@@ -24,18 +35,29 @@
   <arg name="json_output_path" default="/tmp/tree_map_final.json" />
 
   <node pkg="tree_identifier" type="tree_map_fuser.py" name="tree_map_fuser" output="screen">
+    <param name="use_array_input" value="$(arg use_array_input)" />
+    <param name="array_topic" value="$(arg array_topic)" />
     <param name="pose_topic" value="$(arg pose_topic)" />
     <param name="id_topic" value="$(arg id_topic)" />
     <param name="output_topic" value="$(arg output_topic)" />
     <param name="output_id_topic" value="$(arg output_id_topic)" />
+    <param name="output_array_topic" value="$(arg output_array_topic)" />
     <param name="candidate_topic" value="$(arg candidate_topic)" />
     <param name="candidate_id_topic" value="$(arg candidate_id_topic)" />
+    <param name="candidate_array_topic" value="$(arg candidate_array_topic)" />
     <param name="marker_topic" value="$(arg marker_topic)" />
     <param name="association_dist" value="$(arg association_dist)" />
     <param name="id_reuse_max_dist" value="$(arg id_reuse_max_dist)" />
+    <param name="max_diameter_delta" value="$(arg max_diameter_delta)" />
+    <param name="diameter_assoc_weight" value="$(arg diameter_assoc_weight)" />
     <param name="min_confirmations" value="$(arg min_confirmations)" />
     <param name="max_std_xy" value="$(arg max_std_xy)" />
+    <param name="max_std_diameter" value="$(arg max_std_diameter)" />
+    <param name="min_confirmed_confidence" value="$(arg min_confirmed_confidence)" />
     <param name="prune_unconfirmed_after_sec" value="$(arg prune_unconfirmed_after_sec)" />
+    <param name="split_large_source_ids" value="$(arg split_large_source_ids)" />
+    <param name="split_std_xy_threshold" value="$(arg split_std_xy_threshold)" />
+    <param name="split_reject_dist" value="$(arg split_reject_dist)" />
     <param name="publish_rate_hz" value="$(arg publish_rate_hz)" />
     <param name="publish_candidates" value="$(arg publish_candidates)" />
     <param name="log_throttle_sec" value="$(arg log_throttle_sec)" />

@@ -1,14 +1,43 @@
 <launch>
   <arg name="input_cloud_topic" default="/camera/depth/points" />
   <arg name="output_topic" default="/tree_detections" />
+  <arg name="output_array_topic" default="/tree_detections_full" />
   <arg name="marker_topic" default="/tree_detections_raw_markers" />
   <arg name="target_frame" default="world" />
+  <arg name="publish_debug_clusters" default="true" />
+  <arg name="cluster_points_topic" default="/tree_detector_cluster_points" />
+  <arg name="cluster_labels_topic" default="/tree_detector_cluster_labels" />
+  <arg name="detection_radius_topic" default="/tree_detection_radii" />
+
+  <arg name="clustering_mode" default="dbscan_gmm" />
+  <arg name="dbscan_eps" default="0.30" />
+  <arg name="dbscan_min_samples" default="10" />
+  <arg name="enable_gmm_split" default="true" />
+  <arg name="gmm_radius_threshold" default="0.26" />
+  <arg name="gmm_min_points" default="24" />
+  <arg name="gmm_components" default="2" />
+  <arg name="gmm_min_center_dist" default="0.34" />
+  <arg name="ransac_min_inlier_ratio" default="0.18" />
 
   <node pkg="tree_identifier" type="tree_detector_node.py" name="tree_detector_node" output="screen">
     <param name="input_cloud_topic" value="$(arg input_cloud_topic)" />
     <param name="output_topic" value="$(arg output_topic)" />
+    <param name="output_array_topic" value="$(arg output_array_topic)" />
     <param name="marker_topic" value="$(arg marker_topic)" />
     <param name="target_frame" value="$(arg target_frame)" />
+    <param name="publish_debug_clusters" value="$(arg publish_debug_clusters)" />
+    <param name="cluster_points_topic" value="$(arg cluster_points_topic)" />
+    <param name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
+    <param name="detection_radius_topic" value="$(arg detection_radius_topic)" />
+    <param name="clustering_mode" value="$(arg clustering_mode)" />
+    <param name="dbscan_eps" value="$(arg dbscan_eps)" />
+    <param name="dbscan_min_samples" value="$(arg dbscan_min_samples)" />
+    <param name="enable_gmm_split" value="$(arg enable_gmm_split)" />
+    <param name="gmm_radius_threshold" value="$(arg gmm_radius_threshold)" />
+    <param name="gmm_min_points" value="$(arg gmm_min_points)" />
+    <param name="gmm_components" value="$(arg gmm_components)" />
+    <param name="gmm_min_center_dist" value="$(arg gmm_min_center_dist)" />
+    <param name="ransac_min_inlier_ratio" value="$(arg ransac_min_inlier_ratio)" />
 
     <!-- tune for your map/sensor -->
     <param name="slice_z_min" value="1.0" />

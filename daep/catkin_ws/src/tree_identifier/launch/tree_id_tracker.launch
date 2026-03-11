@@ -1,20 +1,36 @@
 <launch>
   <arg name="input_topic" default="/tree_detections" />
+  <arg name="input_array_topic" default="/tree_detections_full" />
+  <arg name="use_array_input" default="true" />
   <arg name="output_topic" default="/tree_detections_tracked" />
+  <arg name="output_array_topic" default="/tree_detections_tracked_full" />
   <arg name="id_topic" default="/tree_detection_ids" />
   <arg name="marker_topic" default="/tree_detection_markers" />
-  <arg name="max_match_dist" default="1.0" />
+  <arg name="max_match_dist" default="0.6" />
+  <arg name="max_diameter_delta" default="0.45" />
+  <arg name="diameter_weight" default="0.4" />
+  <arg name="position_alpha" default="0.45" />
+  <arg name="diameter_alpha" default="0.38" />
+  <arg name="min_detection_confidence" default="0.0" />
   <arg name="max_missed_time" default="5.0" />
   <arg name="default_radius" default="0.30" />
   <arg name="default_height" default="2.0" />
   <arg name="marker_lifetime" default="0.8" />
 
   <node pkg="tree_identifier" type="tree_id_tracker.py" name="tree_id_tracker" output="screen">
+    <param name="use_array_input" value="$(arg use_array_input)" />
     <param name="input_topic" value="$(arg input_topic)" />
+    <param name="input_array_topic" value="$(arg input_array_topic)" />
     <param name="output_topic" value="$(arg output_topic)" />
+    <param name="output_array_topic" value="$(arg output_array_topic)" />
     <param name="id_topic" value="$(arg id_topic)" />
     <param name="marker_topic" value="$(arg marker_topic)" />
     <param name="max_match_dist" value="$(arg max_match_dist)" />
+    <param name="max_diameter_delta" value="$(arg max_diameter_delta)" />
+    <param name="diameter_weight" value="$(arg diameter_weight)" />
+    <param name="position_alpha" value="$(arg position_alpha)" />
+    <param name="diameter_alpha" value="$(arg diameter_alpha)" />
+    <param name="min_detection_confidence" value="$(arg min_detection_confidence)" />
     <param name="max_missed_time" value="$(arg max_missed_time)" />
     <param name="default_radius" value="$(arg default_radius)" />
     <param name="default_height" value="$(arg default_height)" />
