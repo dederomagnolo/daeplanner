@@ -157,7 +157,57 @@ def _prf(tp: int, fn: int, fp: int) -> Tuple[float, float, float]:
     return precision, recall, f1
 
 
-def compute_metrics(truth: List[dict], maps: List[dict], selected_threshold_m: float) -> Tuple[dict, List[dict]]:
+def _diameter_stats(rows: List[dict], gt_diameter_m: float) -> dict:
+    stats = {
+        "population_count": len(rows),
+        "confirmed_count": sum(int(r.get("confirmed", 0)) for r in rows),
+        "suspect_merge_count": sum(int(r.get("suspect_merge", 0)) for r in rows),
+        "ground_truth_diameter_m": gt_diameter_m,
+        "diameter_mean_m": None,
+        "diameter_min_m": None,
+        "diameter_max_m": None,
+        "diameter_bias_m": None,
+        "diameter_mae_m": None,
+        "diameter_rmse_m": None,
+        "diameter_rmse_cm": None,
+        "confidence_mean": None,
+        "std_xy_mean_m": None,
+        "hits_median": None,
+        "hits_max": None,
+    }
+
+    if not rows:
+        return stats
+
+    diameters = [r["diameter_m"] for r in rows]
+    diameter_errors = [d - gt_diameter_m for d in diameters]
+    diameter_abs_errors = [abs(e) for e in diameter_errors]
+    diameter_sq_errors = [e * e for e in diameter_errors]
+
+    stats.update(
+        {
+            "diameter_mean_m": sum(diameters) / float(len(diameters)),
+            "diameter_min_m": min(diameters),
+            "diameter_max_m": max(diameters),
+            "diameter_bias_m": sum(diameter_errors) / float(len(diameter_errors)),
+            "diameter_mae_m": sum(diameter_abs_errors) / float(len(diameter_abs_errors)),
+            "diameter_rmse_m": math.sqrt(sum(diameter_sq_errors) / float(len(diameter_sq_errors))),
+            "confidence_mean": sum(r["confidence"] for r in rows) / float(len(rows)),
+            "std_xy_mean_m": sum(r["std_xy"] for r in rows) / float(len(rows)),
+            "hits_median": st.median([r["hits"] for r in rows]),
+            "hits_max": max(r["hits"] for r in rows),
+        }
+    )
+    stats["diameter_rmse_cm"] = stats["diameter_rmse_m"] * 100.0
+    return stats
+
+
+def compute_metrics(
+    truth: List[dict],
+    maps: List[dict],
+    selected_threshold_m: float,
+    ground_truth_diameter_m: float,
+) -> Tuple[dict, List[dict]]:
     if not truth:
         raise RuntimeError("Ground-truth CSV has no rows.")
     if not maps:
@@ -233,16 +283,18 @@ def compute_metrics(truth: List[dict], maps: List[dict], selected_threshold_m: f
     unmatched_truth_ids = [truth[i]["tree_id"] for i in fn]
     unmatched_map_ids = [maps[i]["map_id"] for i in fp]
 
-    map_stats = {
-        "confirmed_count": sum(m["confirmed"] for m in maps),
-        "suspect_merge_count": sum(m["suspect_merge"] for m in maps),
-        "diameter_mean_m": sum(m["diameter_m"] for m in maps) / float(len(maps)),
-        "diameter_min_m": min(m["diameter_m"] for m in maps),
-        "diameter_max_m": max(m["diameter_m"] for m in maps),
-        "confidence_mean": sum(m["confidence"] for m in maps) / float(len(maps)),
-        "std_xy_mean_m": sum(m["std_xy"] for m in maps) / float(len(maps)),
-        "hits_median": st.median([m["hits"] for m in maps]),
-        "hits_max": max(m["hits"] for m in maps),
+    gt_d = max(float(ground_truth_diameter_m), 0.0)
+    confirmed_maps = [m for m in maps if int(m.get("confirmed", 0)) == 1]
+    matched_tp_maps = [maps[mi] for _, _, mi in keep]
+
+    map_stats_all = _diameter_stats(maps, gt_d)
+    map_stats_confirmed = _diameter_stats(confirmed_maps, gt_d)
+    map_stats_matched_tp = _diameter_stats(matched_tp_maps, gt_d)
+    map_stats = map_stats_all
+    map_stats_views = {
+        "all_map": map_stats_all,
+        "confirmed_only": map_stats_confirmed,
+        "matched_tp_only": map_stats_matched_tp,
     }
 
     metrics = {
@@ -270,6 +322,7 @@ def compute_metrics(truth: List[dict], maps: List[dict], selected_threshold_m: f
             ],
         },
         "map_stats": map_stats,
+        "map_stats_views": map_stats_views,
     }
     return metrics, matching_rows
 
@@ -308,6 +361,45 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     ns = metrics["nearest_stats"]
     se = metrics["selected_eval"]
     ms = metrics["map_stats"]
+    ms_views = metrics.get("map_stats_views", {})
+
+    def _fmt_m(v: Optional[float], decimals: int = 3) -> str:
+        if v is None:
+            return "N/A"
+        return ("{:.%df}" % decimals).format(v)
+
+    def _append_map_stats(lines_out: List[str], title: str, s: dict) -> None:
+        lines_out.append("### {}".format(title))
+        lines_out.append("- Populacao avaliada: {}".format(s.get("population_count", 0)))
+        lines_out.append("- Confirmadas: {}".format(s.get("confirmed_count", 0)))
+        lines_out.append("- Suspeitas de merge: {}".format(s.get("suspect_merge_count", 0)))
+        lines_out.append("- Diametro medio: {} m".format(_fmt_m(s.get("diameter_mean_m"))))
+        lines_out.append(
+            "- Diametro min/max: {} / {} m".format(
+                _fmt_m(s.get("diameter_min_m")),
+                _fmt_m(s.get("diameter_max_m")),
+            )
+        )
+        lines_out.append("- GT diametro de referencia: {} m".format(_fmt_m(s.get("ground_truth_diameter_m"))))
+        lines_out.append("- Erro medio absoluto (MAE): {} m".format(_fmt_m(s.get("diameter_mae_m"))))
+        lines_out.append(
+            "- RMSE de diametro: {} m ({} cm)".format(
+                _fmt_m(s.get("diameter_rmse_m")),
+                _fmt_m(s.get("diameter_rmse_cm"), decimals=2),
+            )
+        )
+        lines_out.append("- Bias de diametro: {} m".format(_fmt_m(s.get("diameter_bias_m"))))
+        lines_out.append("- Confianca media: {}".format(_fmt_m(s.get("confidence_mean"))))
+        lines_out.append("- std_xy medio: {} m".format(_fmt_m(s.get("std_xy_mean_m"))))
+        if s.get("hits_median") is None:
+            lines_out.append("- hits mediana/max: N/A / N/A")
+        else:
+            lines_out.append(
+                "- hits mediana/max: {} / {}".format(
+                    _fmt_m(float(s.get("hits_median")), decimals=1),
+                    int(s.get("hits_max", 0)),
+                )
+            )
 
     lines = []
     lines.append("# {} - Avaliacao vs Ground Truth".format(exp_name))
@@ -334,13 +426,15 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     lines.append("- GT sem match: {}".format(se["unmatched_truth_ids"]))
     lines.append("- Map sem match: {}".format(se["unmatched_map_ids"]))
     lines.append("")
-    lines.append("## Qualidade do Mapa")
-    lines.append("- Confirmadas: {}".format(ms["confirmed_count"]))
-    lines.append("- Suspeitas de merge: {}".format(ms["suspect_merge_count"]))
-    lines.append("- Diametro medio: {:.3f} m".format(ms["diameter_mean_m"]))
-    lines.append("- Diametro min/max: {:.3f} / {:.3f} m".format(ms["diameter_min_m"], ms["diameter_max_m"]))
-    lines.append("- Confianca media: {:.3f}".format(ms["confidence_mean"]))
-    lines.append("- std_xy medio: {:.3f} m".format(ms["std_xy_mean_m"]))
+    lines.append("## Qualidade do Mapa (diametro)")
+    if ms_views:
+        _append_map_stats(lines, "all_map", ms_views.get("all_map", {}))
+        lines.append("")
+        _append_map_stats(lines, "confirmed_only", ms_views.get("confirmed_only", {}))
+        lines.append("")
+        _append_map_stats(lines, "matched_tp_only", ms_views.get("matched_tp_only", {}))
+    else:
+        _append_map_stats(lines, "all_map", ms)
     lines.append("")
     lines.append("## Arquivos")
     lines.append("- world_jean_ground_truth.csv/.svg")
@@ -425,6 +519,12 @@ def main() -> int:
     parser.add_argument("--y-min", type=float, default=-8.0)
     parser.add_argument("--y-max", type=float, default=7.0)
     parser.add_argument("--match-threshold", type=float, default=0.5, help="1:1 matching distance threshold (meters).")
+    parser.add_argument(
+        "--ground-truth-diameter-m",
+        type=float,
+        default=0.30,
+        help="Ground-truth trunk diameter used for diameter error metrics (meters).",
+    )
     parser.add_argument(
         "--tree-identifier-scripts-dir",
         default=str(default_ti_scripts),
@@ -617,7 +717,12 @@ def main() -> int:
 
     truth_rows = load_truth(gt_csv)
     map_rows = load_map(exp_dir / "tree_map_final.csv")
-    metrics, matching_rows = compute_metrics(truth_rows, map_rows, selected_threshold_m=args.match_threshold)
+    metrics, matching_rows = compute_metrics(
+        truth_rows,
+        map_rows,
+        selected_threshold_m=args.match_threshold,
+        ground_truth_diameter_m=args.ground_truth_diameter_m,
+    )
     metrics["experiment_name"] = exp_name
 
     metrics_path = exp_dir / "metrics.json"

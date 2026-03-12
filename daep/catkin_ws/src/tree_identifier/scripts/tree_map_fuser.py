@@ -65,6 +65,7 @@ class TreeMapFuser(object):
 
         self.default_height = rospy.get_param("~default_height", 2.2)
         self.default_radius = rospy.get_param("~default_radius", 0.35)
+        self.ground_truth_diameter_m = float(rospy.get_param("~ground_truth_diameter_m", 0.30))
 
         self.auto_export_period_sec = rospy.get_param("~auto_export_period_sec", 5.0)
         self.csv_output_path = self._normalize_path(
@@ -654,13 +655,20 @@ class TreeMapFuser(object):
                 std_xy = self._entry_std_xy(entry)
                 std_d = self._entry_std_diameter(entry)
                 age_sec = now - entry["last_seen"]
+                diameter_m = max(entry["diameter"], 0.0)
+                gt_diameter_m = max(self.ground_truth_diameter_m, 0.0)
+                diameter_error_m = abs(diameter_m - gt_diameter_m)
+                diameter_sq_error_m2 = (diameter_m - gt_diameter_m) ** 2
                 rows.append(
                     {
                         "map_id": map_id,
                         "x": entry["x"],
                         "y": entry["y"],
                         "z": entry["z"],
-                        "diameter_m": max(entry["diameter"], 0.0),
+                        "diameter_m": diameter_m,
+                        "gt_diameter_m": gt_diameter_m,
+                        "diameter_error_m": diameter_error_m,
+                        "diameter_sq_error_m2": diameter_sq_error_m2,
                         "hits": entry["hits"],
                         "std_xy": std_xy,
                         "std_diameter": std_d,
@@ -690,6 +698,9 @@ class TreeMapFuser(object):
                             "y",
                             "z",
                             "diameter_m",
+                            "gt_diameter_m",
+                            "diameter_error_m",
+                            "diameter_sq_error_m2",
                             "hits",
                             "std_xy",
                             "std_diameter",
@@ -709,6 +720,9 @@ class TreeMapFuser(object):
                                 "%.6f" % row["y"],
                                 "%.6f" % row["z"],
                                 "%.6f" % row["diameter_m"],
+                                "%.6f" % row["gt_diameter_m"],
+                                "%.6f" % row["diameter_error_m"],
+                                "%.6f" % row["diameter_sq_error_m2"],
                                 row["hits"],
                                 "%.6f" % row["std_xy"],
                                 "%.6f" % row["std_diameter"],

@@ -43,6 +43,7 @@
   <arg name="fuser_publish_candidates" default="true" />
   <arg name="fuser_log_throttle_sec" default="2.0" />
   <arg name="fuser_auto_export_period_sec" default="5.0" />
+  <arg name="fuser_ground_truth_diameter_m" default="0.30" />
   <arg name="fuser_csv_output_path" default="/tmp/tree_map_final.csv" />
   <arg name="fuser_json_output_path" default="/tmp/tree_map_final.json" />
   <arg name="detector_publish_debug_clusters" default="$(arg run_cluster_plotter)" />
@@ -164,6 +165,7 @@
     <arg name="publish_rate_hz" value="$(arg fuser_publish_rate_hz)" />
     <arg name="publish_candidates" value="$(arg fuser_publish_candidates)" />
     <arg name="log_throttle_sec" value="$(arg fuser_log_throttle_sec)" />
+    <arg name="ground_truth_diameter_m" value="$(arg fuser_ground_truth_diameter_m)" />
     <arg name="auto_export_period_sec" value="$(arg fuser_auto_export_period_sec)" />
     <arg name="csv_output_path" value="$(arg fuser_csv_output_path)" />
     <arg name="json_output_path" value="$(arg fuser_json_output_path)" />

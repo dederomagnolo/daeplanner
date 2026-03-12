@@ -29,6 +29,7 @@
   <arg name="log_throttle_sec" default="2.0" />
   <arg name="default_height" default="2.2" />
   <arg name="default_radius" default="0.35" />
+  <arg name="ground_truth_diameter_m" default="0.30" />
 
   <arg name="auto_export_period_sec" default="5.0" />
   <arg name="csv_output_path" default="/tmp/tree_map_final.csv" />
@@ -63,6 +64,7 @@
     <param name="log_throttle_sec" value="$(arg log_throttle_sec)" />
     <param name="default_height" value="$(arg default_height)" />
     <param name="default_radius" value="$(arg default_radius)" />
+    <param name="ground_truth_diameter_m" value="$(arg ground_truth_diameter_m)" />
     <param name="auto_export_period_sec" value="$(arg auto_export_period_sec)" />
     <param name="csv_output_path" value="$(arg csv_output_path)" />
     <param name="json_output_path" value="$(arg json_output_path)" />
