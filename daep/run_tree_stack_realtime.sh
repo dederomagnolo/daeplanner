@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   ./run_tree_stack_realtime.sh [input_cloud_topic] [target_frame] [csv_out] [json_out] [snapshot_dir]
+#   ./run_tree_stack_realtime.sh [input_cloud_topic] [target_frame] [csv_out] [json_out] [snapshot_dir] [experiment_seed]
 #
 # Defaults are tuned for the usual DAEPlanner setup and axis range used in your plots.
 
@@ -11,6 +11,7 @@ target_frame="${2:-world}"
 csv_out="${3:-/home/daep/data/tree_map_final.csv}"
 json_out="${4:-/home/daep/data/tree_map_final.json}"
 snapshot_dir="${5:-/home/daep/tree_snapshots}"
+experiment_seed="${6:-${EXPERIMENT_SEED:--1}}"
 
 run_plotter="${RUN_PLOTTER:-true}"
 run_cluster_plotter="${RUN_CLUSTER_PLOTTER:-true}"
@@ -28,6 +29,7 @@ echo "[tree_stack] target_frame=${target_frame}"
 echo "[tree_stack] csv_out=${csv_out}"
 echo "[tree_stack] json_out=${json_out}"
 echo "[tree_stack] snapshot_dir=${snapshot_dir}"
+echo "[tree_stack] experiment_seed=${experiment_seed}"
 
 roslaunch tree_identifier tree_stack.launch \
   input_cloud_topic:="${input_cloud_topic}" \
@@ -38,6 +40,7 @@ roslaunch tree_identifier tree_stack.launch \
   tracker_use_array_input:=true \
   fuser_use_array_input:=true \
   detector_clustering_mode:=dbscan_gmm \
+  experiment_seed:="${experiment_seed}" \
   fuser_csv_output_path:="${csv_out}" \
   fuser_json_output_path:="${json_out}" \
   cluster_plotter_snapshot_dir:="${snapshot_dir}" \

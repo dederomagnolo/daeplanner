@@ -36,6 +36,9 @@ daep/.sdformat/
 daep/.gazebo/
 daep/octomaps
 daep/model_editor_models/
+daep/experimentos
+daep/meus-resultados
+daep/tree_snapshots
 
 # Trash files from dep
 dep/gazebo_models/

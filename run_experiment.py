@@ -6,6 +6,8 @@ import os
 import signal
 import math
 import select
+import json
+import argparse
 # Command to open a new terminal tab and run a command
 NEW_TAB_CMD = 'gnome-terminal --tab -- {}'
 
@@ -25,9 +27,12 @@ def simulation(image_name, world_value, mode_value, spawn_position, human_avoida
 
 
 # Open a new terminal tab, open a new instance of the docker image and run exploration
-def exploration(image_name, config_file):
+def exploration(image_name, config_file, experiment_seed=None):
     # Command to execute a command inside a running Docker container
-    DOCKER_EXEC_CMD = "./dev_env.sh exec {0} exploration.sh {1}".format(image_name, config_file)
+    if experiment_seed is None:
+        DOCKER_EXEC_CMD = "./dev_env.sh exec {0} exploration.sh {1}".format(image_name, config_file)
+    else:
+        DOCKER_EXEC_CMD = "./dev_env.sh exec {0} exploration.sh {1} {2}".format(image_name, config_file, experiment_seed)
     # Open a new terminal tab and execute the exploration command inside the running Docker container
     subprocess.run(NEW_TAB_CMD.format(DOCKER_EXEC_CMD), shell=True)
 
@@ -98,6 +103,16 @@ with open('experiments.yaml', 'r') as file:
     except yaml.YAMLError as e:
         print(e)
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=None,
+    help="Optional seed for planner random sampling. If omitted, behavior stays unchanged.",
+)
+args = parser.parse_args()
+experiment_seed = args.seed
+
 
 # Extract experiment parameters settings
 print("Extracting data from experiments.yaml")
@@ -112,6 +127,10 @@ no_replan = data['no_replan']
 
 print("\n--------- EXPERIMENT SETUP ---------")
 print(f"Running every experiment for {run_time/60} Minutes ({run_time} Seconds)")
+if experiment_seed is None:
+    print("Experiment seed: default behavior (unset)")
+else:
+    print(f"Experiment seed: {experiment_seed}")
 print(f"Running with the following planners: {' '.join(planners)}")
 print(f"Running with the following worlds: {' '.join(worlds)}")
 print(f"Running with the following modes: {' '.join(modes)}")
@@ -160,7 +179,7 @@ for planner in planners:
                 if planner == "dep":
                     exploration_dep(image_name, config_file, no_replan)
                 else:
-                    exploration(image_name, config_file)
+                    exploration(image_name, config_file, experiment_seed)
                 
                 # Wait for exploration planner to start
                 print("Waiting 10 seconds for planner to start up")
@@ -203,6 +222,16 @@ for planner in planners:
                     src_file = os.path.join(src_folder, file_name)
                     dst_file = os.path.join(dst_folder, file_name)
                     shutil.copy(src_file, dst_file)
+
+                meta = {
+                    "planner": planner,
+                    "world": world,
+                    "mode": mode,
+                    "iteration": iter,
+                    "experiment_seed": experiment_seed,
+                }
+                with open(os.path.join(dst_folder, "run_meta.json"), "w") as meta_file:
+                    json.dump(meta, meta_file, indent=2, sort_keys=True)
 
                 time.sleep(10)
                 print("waiting 10 seconds for gazebo simulation to close properly")

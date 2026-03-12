@@ -69,7 +69,16 @@ class TreeDetectorNode(object):
         self.gmm_min_points = rospy.get_param("~gmm_min_points", 24)
         self.gmm_components = rospy.get_param("~gmm_components", 2)
         self.gmm_min_center_dist = rospy.get_param("~gmm_min_center_dist", 0.34)
-        self.gmm_random_state = rospy.get_param("~gmm_random_state", 42)
+        self.experiment_seed = int(rospy.get_param("~experiment_seed", -1))
+        if rospy.has_param("~gmm_random_state"):
+            self.gmm_random_state = int(rospy.get_param("~gmm_random_state"))
+        elif self.experiment_seed >= 0:
+            self.gmm_random_state = self.experiment_seed
+        else:
+            self.gmm_random_state = 42
+        if self.experiment_seed >= 0:
+            random.seed(self.experiment_seed)
+            np.random.seed(self.experiment_seed % (2**32 - 1))
 
         self.cell_size = rospy.get_param("~cell_size", 0.20)
         self.min_points_per_cell = rospy.get_param("~min_points_per_cell", 3)
@@ -93,11 +102,13 @@ class TreeDetectorNode(object):
             self.clustering_mode = "grid_cc"
 
         rospy.loginfo(
-            "tree_detector_node listening on %s (target_frame=%s mode=%s array_out=%s)",
+            "tree_detector_node listening on %s (target_frame=%s mode=%s array_out=%s seed=%d gmm_seed=%d)",
             self.input_cloud_topic,
             self.target_frame,
             self.clustering_mode,
             self.output_array_topic,
+            self.experiment_seed,
+            self.gmm_random_state,
         )
 
     def _to_cell(self, x, y):

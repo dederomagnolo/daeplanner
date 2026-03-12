@@ -59,6 +59,7 @@
   <arg name="detector_gmm_components" default="2" />
   <arg name="detector_gmm_min_center_dist" default="0.34" />
   <arg name="detector_ransac_min_inlier_ratio" default="0.18" />
+  <arg name="experiment_seed" default="-1" />
 
   <!-- Plotter -->
   <arg name="refresh_ms" default="500" />
@@ -111,6 +112,7 @@
     <arg name="gmm_components" value="$(arg detector_gmm_components)" />
     <arg name="gmm_min_center_dist" value="$(arg detector_gmm_min_center_dist)" />
     <arg name="ransac_min_inlier_ratio" value="$(arg detector_ransac_min_inlier_ratio)" />
+    <arg name="experiment_seed" value="$(arg experiment_seed)" />
   </include>
 
   <!-- Tracker/Identifier -->
