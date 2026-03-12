@@ -1,6 +1,7 @@
 #include <rrtplanner/rrt.h>
 #include <tf2/utils.h>
 #include <cmath>
+#include <cstdlib>
 
 namespace aeplanner_ns
 {
@@ -50,6 +51,11 @@ Rrt::Rrt(const ros::NodeHandle& nh)
   }
   if (!ros::param::get(ns + "/drone_angular_velocity", drone_angular_velocity)) {
     ROS_WARN_STREAM("No /drone_angular_velocity specified. Default: " << drone_angular_velocity);
+  }
+  int experiment_seed = -1;
+  if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {
+    srand(static_cast<unsigned int>(experiment_seed));
+    ROS_INFO_STREAM("RRTPlanner random seed: " << experiment_seed);
   }
  
   ot_ = std::make_shared<octomap::OcTree>(

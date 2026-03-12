@@ -1,5 +1,6 @@
 #include <aeplanner/aeplanner.h>
 #include <tf2/utils.h>
+#include <cstdlib>
 
 namespace aeplanner
 {
@@ -31,6 +32,12 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , dynamic_mode_(false)
 {
   params_ = readParams();
+  int experiment_seed = -1;
+  const std::string ns = ros::this_node::getNamespace();
+  if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {
+    srand(static_cast<unsigned int>(experiment_seed));
+    ROS_INFO_STREAM("AEPlanner random seed: " << experiment_seed);
+  }
   as_.start();
 
   // Initialize kd-tree
@@ -422,7 +429,18 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
   ROS_DEBUG_STREAM("publishRecursive");
   publishEvaluatedNodesRecursive(root);
 
-  // Only one action along best branch is executed
+  // Only one action along best branch is executed.
+  // Defensive check: some edge cases can leave the cached branch without a next node.
+  if (!best_branch_root_ || best_branch_root_->children_.empty())
+  {
+    ROS_WARN("Best branch has no executable child node. Falling back to frontier planning.");
+    result.frontiers = getFrontiers();
+    result.is_clear = false;
+    as_.setSucceeded(result);
+    delete root;
+    kd_free(kd_tree_);
+    return;
+  }
   result.pose.pose = vecToPose(best_branch_root_->children_[0]->state_);
 
   // If we find a best node
@@ -457,19 +475,34 @@ RRTNode* AEPlanner::initialize(std::vector<std::tuple<std::vector<double>, std::
   kd_tree_ = kd_create(3);
   best_node_ = NULL;
   RRTNode* root = NULL;
-  if(best_branch_root_){
+  if (best_branch_root_)
+  {
     reevaluatePotentialInformationGainRecursive(best_branch_root_);
-    best_branch_root_ = best_branch_root_->children_[0];
-    VisualizeOldPath(old_path_marker_pub_, best_branch_root_);
 
-    ROS_DEBUG_STREAM("best branch root : (" << best_branch_root_->state_(0) << ", " << best_branch_root_->state_(1) << ", " << best_branch_root_->state_(2) << ", " << best_branch_root_->state_(3) << ")");
-
-    if(best_branch_root_->children_.size() > 0){
-        best_branch_root_->parent_ = NULL;
-    }
-    else{
-      delete best_branch_root_;
+    RRTNode* old_root = best_branch_root_;
+    if (old_root->children_.empty())
+    {
+      delete old_root;
       best_branch_root_ = NULL;
+    }
+    else
+    {
+      best_branch_root_ = old_root->children_[0];
+      old_root->children_.clear();
+      delete old_root;
+
+      VisualizeOldPath(old_path_marker_pub_, best_branch_root_);
+      ROS_DEBUG_STREAM("best branch root : (" << best_branch_root_->state_(0) << ", " << best_branch_root_->state_(1) << ", " << best_branch_root_->state_(2) << ", " << best_branch_root_->state_(3) << ")");
+
+      if (best_branch_root_->children_.size() > 0)
+      {
+        best_branch_root_->parent_ = NULL;
+      }
+      else
+      {
+        delete best_branch_root_;
+        best_branch_root_ = NULL;
+      }
     }
   }
   
@@ -497,20 +530,23 @@ std::pair<RRTNode*, bool> AEPlanner::pathIsSafe(RRTNode* node,
   }
 
   RRTNode* curr = node;
-  // Traverse until root
-  while(!curr->children_.empty()){
-    // if any node has a potential collision return false
+  // Traverse branch node-by-node, including the leaf.
+  while (curr) {
     double time_to_reach_node = curr->time_cost();
 
     bool collision = checkCollision(time_to_reach_node, curr->state_, trajectories, covarianceEllipses) && dynamic_mode_;
-    if (collision){
+    if (collision) {
       return std::make_pair(nullptr, false);  // Collision detected, return false
     }
-    else{
-      curr = curr->children_[0];
+
+    if (curr->children_.empty()) {
+      return std::make_pair(curr, true);  // No collision, leaf is safe
     }
+
+    curr = curr->children_[0];
   }  
-  return std::make_pair(curr, true);  // No collision, return the leaf node and true
+
+  return std::make_pair(nullptr, false);
 }
 
 void AEPlanner::reevaluatePotentialInformationGainRecursive(RRTNode* node)
@@ -555,7 +591,7 @@ void AEPlanner::expandRRT(std::vector<std::tuple<std::vector<double>, std::vecto
   // (1) Sample until N_valid > init_iterations and total sampled nodes < max_sampled_nodes
   // (2) If more than max_sampled_nodes are sampled: continue until max_sampled_nodes as long as dynamic score is not high enough
   while ((N_valid < params_.init_iterations and N_sampled_nodes < params_.max_sampled_initial_nodes) or 
-  ((N_valid > 0 and N_sampled_nodes < params_.max_sampled_nodes and best_node_->dynamic_score(params_.lambda, params_.zeta) < params_.zero_gain) 
+  ((N_valid > 0 and N_sampled_nodes < params_.max_sampled_nodes and best_node_ and best_node_->dynamic_score(params_.lambda, params_.zeta) < params_.zero_gain) 
   and ros::ok()))
 
   {
@@ -576,6 +612,10 @@ void AEPlanner::expandRRT(std::vector<std::tuple<std::vector<double>, std::vecto
       ROS_DEBUG_STREAM("sample x: " << new_node->state_[0] << " y: "<< new_node->state_[1] << " z: "<< new_node->state_[2]);
 
       nearest = chooseParent(new_node, params_.extension_range);
+      if (!nearest)
+      {
+        continue;
+      }
 
       new_node->state_ = restrictDistance(nearest->state_, new_node->state_);
       ROS_DEBUG_STREAM("restrictDistance sample x: " << new_node->state_[0] << " y: "<< new_node->state_[1] << " z: "<< new_node->state_[2]);
@@ -674,7 +714,7 @@ void AEPlanner::expandRRT(std::vector<std::tuple<std::vector<double>, std::vecto
     N_sampled_nodes++;
   }
 
-  if(N_valid > 0){
+  if (N_valid > 0 && best_node_) {
   // Visualize the best node as green (=2)
   Eigen::Vector4d p4(best_node_->state_[0], best_node_->state_[1], best_node_->state_[2], 2);
   validNodes.push_back(p4);
@@ -846,6 +886,11 @@ std::tuple <double, double, double> AEPlanner::gainCubature(Eigen::Vector4d stat
   std::shared_ptr<octomap::OcTree> ot = ot_;
   double static_gain = 0.0;
   double dynamic_gain = 0.0;
+  if (!ot)
+  {
+    ROS_WARN_THROTTLE(2.0, "gainCubature called without octomap. Returning zero gain.");
+    return std::make_tuple(0.0, 0.0, state[3]);
+  }
 
   //Field of View
   double fov_y = params_.hfov, fov_p = params_.vfov; //Horizontoal 103.2 deg and Vertical 77.4 deg

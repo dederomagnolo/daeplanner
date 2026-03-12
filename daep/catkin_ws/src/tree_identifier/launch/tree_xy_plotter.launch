@@ -1,0 +1,57 @@
+<launch>
+  <arg name="pose_topic" default="/tree_detections_tracked" />
+  <arg name="id_topic" default="/tree_detection_ids" />
+  <arg name="refresh_ms" default="500" />
+  <arg name="show_xy_in_label" default="true" />
+  <arg name="fixed_axes" default="true" />
+  <arg name="x_min" default="-10.0" />
+  <arg name="x_max" default="10.0" />
+  <arg name="y_min" default="-8.0" />
+  <arg name="y_max" default="7.0" />
+  <arg name="tick_step" default="5.0" />
+  <arg name="log_coords" default="true" />
+  <arg name="log_throttle_sec" default="2.0" />
+  <arg name="accumulate_unique" default="true" />
+  <arg name="cache_by_id" default="true" />
+  <arg name="dedup_dist" default="1.0" />
+  <arg name="update_cached_position" default="false" />
+  <arg name="log_only_on_new" default="false" />
+  <arg name="enable_map_overlay" default="true" />
+  <arg name="map_pose_topic" default="/tree_map_poses" />
+  <arg name="map_id_topic" default="/tree_map_ids" />
+  <arg name="map_candidate_pose_topic" default="/tree_map_candidates" />
+  <arg name="map_candidate_id_topic" default="/tree_map_candidate_ids" />
+  <arg name="show_live_labels" default="true" />
+  <arg name="show_map_labels" default="true" />
+  <arg name="show_metrics" default="true" />
+  <arg name="max_labels" default="70" />
+
+  <node pkg="tree_identifier" type="tree_xy_plotter.py" name="tree_xy_plotter" output="screen">
+    <param name="pose_topic" value="$(arg pose_topic)" />
+    <param name="id_topic" value="$(arg id_topic)" />
+    <param name="refresh_ms" value="$(arg refresh_ms)" />
+    <param name="show_xy_in_label" value="$(arg show_xy_in_label)" />
+    <param name="fixed_axes" value="$(arg fixed_axes)" />
+    <param name="x_min" value="$(arg x_min)" />
+    <param name="x_max" value="$(arg x_max)" />
+    <param name="y_min" value="$(arg y_min)" />
+    <param name="y_max" value="$(arg y_max)" />
+    <param name="tick_step" value="$(arg tick_step)" />
+    <param name="log_coords" value="$(arg log_coords)" />
+    <param name="log_throttle_sec" value="$(arg log_throttle_sec)" />
+    <param name="accumulate_unique" value="$(arg accumulate_unique)" />
+    <param name="cache_by_id" value="$(arg cache_by_id)" />
+    <param name="dedup_dist" value="$(arg dedup_dist)" />
+    <param name="update_cached_position" value="$(arg update_cached_position)" />
+    <param name="log_only_on_new" value="$(arg log_only_on_new)" />
+    <param name="enable_map_overlay" value="$(arg enable_map_overlay)" />
+    <param name="map_pose_topic" value="$(arg map_pose_topic)" />
+    <param name="map_id_topic" value="$(arg map_id_topic)" />
+    <param name="map_candidate_pose_topic" value="$(arg map_candidate_pose_topic)" />
+    <param name="map_candidate_id_topic" value="$(arg map_candidate_id_topic)" />
+    <param name="show_live_labels" value="$(arg show_live_labels)" />
+    <param name="show_map_labels" value="$(arg show_map_labels)" />
+    <param name="show_metrics" value="$(arg show_metrics)" />
+    <param name="max_labels" value="$(arg max_labels)" />
+  </node>
+</launch>

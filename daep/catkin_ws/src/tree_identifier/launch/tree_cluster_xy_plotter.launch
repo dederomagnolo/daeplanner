@@ -1,0 +1,83 @@
+<launch>
+  <arg name="cluster_points_topic" default="/tree_detector_cluster_points" />
+  <arg name="cluster_labels_topic" default="/tree_detector_cluster_labels" />
+  <arg name="use_raw_array_input" default="true" />
+  <arg name="raw_array_topic" default="/tree_detections_full" />
+  <arg name="raw_pose_topic" default="/tree_detections" />
+  <arg name="raw_radius_topic" default="/tree_detection_radii" />
+
+  <arg name="enable_map_overlay" default="true" />
+  <arg name="map_pose_topic" default="/tree_map_poses" />
+  <arg name="map_id_topic" default="/tree_map_ids" />
+  <arg name="map_candidate_pose_topic" default="/tree_map_candidates" />
+  <arg name="map_candidate_id_topic" default="/tree_map_candidate_ids" />
+
+  <arg name="refresh_ms" default="500" />
+  <arg name="fixed_axes" default="true" />
+  <arg name="x_min" default="-10.0" />
+  <arg name="x_max" default="10.0" />
+  <arg name="y_min" default="-8.0" />
+  <arg name="y_max" default="7.0" />
+  <arg name="tick_step" default="5.0" />
+
+  <arg name="cluster_point_size" default="12.0" />
+  <arg name="cluster_alpha" default="0.62" />
+  <arg name="show_tree_labels" default="true" />
+  <arg name="show_map_labels" default="true" />
+  <arg name="show_metrics" default="true" />
+  <arg name="max_labels" default="90" />
+  <arg name="log_throttle_sec" default="2.0" />
+  <arg name="accumulate_history" default="true" />
+  <arg name="plot_history" default="true" />
+  <arg name="max_history_points" default="250000" />
+  <arg name="history_label_stride" default="1000" />
+
+  <arg name="snapshot_topic" default="~save_snapshot" />
+  <arg name="snapshot_dir" default="/tmp/tree_cluster_snapshots" />
+  <arg name="snapshot_prefix" default="tree_cluster_state" />
+  <arg name="auto_snapshot_period_sec" default="0.0" />
+  <arg name="save_png" default="true" />
+  <arg name="save_on_shutdown" default="true" />
+
+  <node pkg="tree_identifier" type="tree_cluster_xy_plotter.py" name="tree_cluster_xy_plotter" output="screen">
+    <param name="cluster_points_topic" value="$(arg cluster_points_topic)" />
+    <param name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
+    <param name="use_raw_array_input" value="$(arg use_raw_array_input)" />
+    <param name="raw_array_topic" value="$(arg raw_array_topic)" />
+    <param name="raw_pose_topic" value="$(arg raw_pose_topic)" />
+    <param name="raw_radius_topic" value="$(arg raw_radius_topic)" />
+
+    <param name="enable_map_overlay" value="$(arg enable_map_overlay)" />
+    <param name="map_pose_topic" value="$(arg map_pose_topic)" />
+    <param name="map_id_topic" value="$(arg map_id_topic)" />
+    <param name="map_candidate_pose_topic" value="$(arg map_candidate_pose_topic)" />
+    <param name="map_candidate_id_topic" value="$(arg map_candidate_id_topic)" />
+
+    <param name="refresh_ms" value="$(arg refresh_ms)" />
+    <param name="fixed_axes" value="$(arg fixed_axes)" />
+    <param name="x_min" value="$(arg x_min)" />
+    <param name="x_max" value="$(arg x_max)" />
+    <param name="y_min" value="$(arg y_min)" />
+    <param name="y_max" value="$(arg y_max)" />
+    <param name="tick_step" value="$(arg tick_step)" />
+
+    <param name="cluster_point_size" value="$(arg cluster_point_size)" />
+    <param name="cluster_alpha" value="$(arg cluster_alpha)" />
+    <param name="show_tree_labels" value="$(arg show_tree_labels)" />
+    <param name="show_map_labels" value="$(arg show_map_labels)" />
+    <param name="show_metrics" value="$(arg show_metrics)" />
+    <param name="max_labels" value="$(arg max_labels)" />
+    <param name="log_throttle_sec" value="$(arg log_throttle_sec)" />
+    <param name="accumulate_history" value="$(arg accumulate_history)" />
+    <param name="plot_history" value="$(arg plot_history)" />
+    <param name="max_history_points" value="$(arg max_history_points)" />
+    <param name="history_label_stride" value="$(arg history_label_stride)" />
+
+    <param name="snapshot_topic" value="$(arg snapshot_topic)" />
+    <param name="snapshot_dir" value="$(arg snapshot_dir)" />
+    <param name="snapshot_prefix" value="$(arg snapshot_prefix)" />
+    <param name="auto_snapshot_period_sec" value="$(arg auto_snapshot_period_sec)" />
+    <param name="save_png" value="$(arg save_png)" />
+    <param name="save_on_shutdown" value="$(arg save_on_shutdown)" />
+  </node>
+</launch>
