@@ -1,5 +1,6 @@
 #include <aeplanner/aeplanner.h>
 #include <tf2/utils.h>
+#include <cstdlib>
 
 namespace aeplanner
 {
@@ -31,6 +32,12 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , dynamic_mode_(false)
 {
   params_ = readParams();
+  int experiment_seed = -1;
+  const std::string ns = ros::this_node::getNamespace();
+  if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {
+    srand(static_cast<unsigned int>(experiment_seed));
+    ROS_INFO_STREAM("AEPlanner random seed: " << experiment_seed);
+  }
   as_.start();
 
   // Initialize kd-tree
@@ -497,20 +504,23 @@ std::pair<RRTNode*, bool> AEPlanner::pathIsSafe(RRTNode* node,
   }
 
   RRTNode* curr = node;
-  // Traverse until root
-  while(!curr->children_.empty()){
-    // if any node has a potential collision return false
+  // Traverse branch node-by-node, including the leaf.
+  while (curr) {
     double time_to_reach_node = curr->time_cost();
 
     bool collision = checkCollision(time_to_reach_node, curr->state_, trajectories, covarianceEllipses) && dynamic_mode_;
-    if (collision){
+    if (collision) {
       return std::make_pair(nullptr, false);  // Collision detected, return false
     }
-    else{
-      curr = curr->children_[0];
+
+    if (curr->children_.empty()) {
+      return std::make_pair(curr, true);  // No collision, leaf is safe
     }
+
+    curr = curr->children_[0];
   }  
-  return std::make_pair(curr, true);  // No collision, return the leaf node and true
+
+  return std::make_pair(nullptr, false);
 }
 
 void AEPlanner::reevaluatePotentialInformationGainRecursive(RRTNode* node)
