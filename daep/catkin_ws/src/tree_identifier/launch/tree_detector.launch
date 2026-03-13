@@ -12,12 +12,20 @@
   <arg name="clustering_mode" default="dbscan_gmm" />
   <arg name="dbscan_eps" default="0.30" />
   <arg name="dbscan_min_samples" default="10" />
+  <arg name="min_cluster_points" default="3" />
   <arg name="enable_gmm_split" default="true" />
-  <arg name="gmm_radius_threshold" default="0.26" />
-  <arg name="gmm_min_points" default="24" />
+  <arg name="gmm_radius_threshold" default="0.25" />
+  <arg name="gmm_min_points" default="10" />
   <arg name="gmm_components" default="2" />
-  <arg name="gmm_min_center_dist" default="0.34" />
-  <arg name="ransac_min_inlier_ratio" default="0.18" />
+  <arg name="gmm_min_center_dist" default="0.0" />
+  <arg name="ransac_iterations" default="50" />
+  <arg name="ransac_distance_threshold" default="0.01" />
+  <arg name="ransac_min_inlier_ratio" default="0.0" />
+  <arg name="slice_z_min" default="1.15" />
+  <arg name="slice_z_max" default="1.45" />
+  <arg name="min_diameter" default="0.15" />
+  <arg name="max_diameter" default="1.00" />
+  <arg name="max_points" default="180000" />
   <arg name="experiment_seed" default="-1" />
 
   <node pkg="tree_identifier" type="tree_detector_node.py" name="tree_detector_node" output="screen">
@@ -33,22 +41,26 @@
     <param name="clustering_mode" value="$(arg clustering_mode)" />
     <param name="dbscan_eps" value="$(arg dbscan_eps)" />
     <param name="dbscan_min_samples" value="$(arg dbscan_min_samples)" />
+    <param name="min_cluster_points" value="$(arg min_cluster_points)" />
     <param name="enable_gmm_split" value="$(arg enable_gmm_split)" />
     <param name="gmm_radius_threshold" value="$(arg gmm_radius_threshold)" />
     <param name="gmm_min_points" value="$(arg gmm_min_points)" />
     <param name="gmm_components" value="$(arg gmm_components)" />
     <param name="gmm_min_center_dist" value="$(arg gmm_min_center_dist)" />
+    <param name="ransac_iterations" value="$(arg ransac_iterations)" />
+    <param name="ransac_distance_threshold" value="$(arg ransac_distance_threshold)" />
     <param name="ransac_min_inlier_ratio" value="$(arg ransac_min_inlier_ratio)" />
     <param name="experiment_seed" value="$(arg experiment_seed)" />
 
     <!-- tune for your map/sensor -->
-    <param name="slice_z_min" value="1.0" />
-    <param name="slice_z_max" value="1.6" />
+    <param name="slice_z_min" value="$(arg slice_z_min)" />
+    <param name="slice_z_max" value="$(arg slice_z_max)" />
+    <param name="max_points" value="$(arg max_points)" />
     <param name="cell_size" value="0.20" />
     <param name="min_points_per_cell" value="3" />
     <param name="min_cells_per_cluster" value="3" />
     <param name="max_cells_per_cluster" value="200" />
-    <param name="min_diameter" value="0.10" />
-    <param name="max_diameter" value="1.20" />
+    <param name="min_diameter" value="$(arg min_diameter)" />
+    <param name="max_diameter" value="$(arg max_diameter)" />
   </node>
 </launch>

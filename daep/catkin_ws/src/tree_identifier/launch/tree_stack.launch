@@ -12,7 +12,7 @@
   <arg name="tracker_diameter_weight" default="0.4" />
   <arg name="tracker_position_alpha" default="0.45" />
   <arg name="tracker_diameter_alpha" default="0.38" />
-  <arg name="tracker_min_detection_confidence" default="0.0" />
+  <arg name="tracker_min_detection_confidence" default="0.55" />
   <arg name="tracker_max_missed_time" default="25.0" />
   <arg name="tracker_default_radius" default="0.30" />
   <arg name="tracker_default_height" default="2.0" />
@@ -31,11 +31,11 @@
   <arg name="fuser_id_reuse_max_dist" default="0.95" />
   <arg name="fuser_max_diameter_delta" default="0.45" />
   <arg name="fuser_diameter_assoc_weight" default="0.35" />
-  <arg name="fuser_min_confirmations" default="4" />
+  <arg name="fuser_min_confirmations" default="3" />
   <arg name="fuser_max_std_xy" default="0.70" />
   <arg name="fuser_max_std_diameter" default="0.28" />
-  <arg name="fuser_min_confirmed_confidence" default="0.0" />
-  <arg name="fuser_prune_unconfirmed_after_sec" default="60.0" />
+  <arg name="fuser_min_confirmed_confidence" default="0.55" />
+  <arg name="fuser_prune_unconfirmed_after_sec" default="180.0" />
   <arg name="fuser_split_large_source_ids" default="18" />
   <arg name="fuser_split_std_xy_threshold" default="0.45" />
   <arg name="fuser_split_reject_dist" default="0.75" />
@@ -54,12 +54,20 @@
   <arg name="detector_clustering_mode" default="dbscan_gmm" />
   <arg name="detector_dbscan_eps" default="0.30" />
   <arg name="detector_dbscan_min_samples" default="10" />
+  <arg name="detector_min_cluster_points" default="3" />
   <arg name="detector_enable_gmm_split" default="true" />
-  <arg name="detector_gmm_radius_threshold" default="0.26" />
-  <arg name="detector_gmm_min_points" default="24" />
+  <arg name="detector_gmm_radius_threshold" default="0.25" />
+  <arg name="detector_gmm_min_points" default="10" />
   <arg name="detector_gmm_components" default="2" />
-  <arg name="detector_gmm_min_center_dist" default="0.34" />
-  <arg name="detector_ransac_min_inlier_ratio" default="0.18" />
+  <arg name="detector_gmm_min_center_dist" default="0.0" />
+  <arg name="detector_ransac_iterations" default="50" />
+  <arg name="detector_ransac_distance_threshold" default="0.01" />
+  <arg name="detector_ransac_min_inlier_ratio" default="0.0" />
+  <arg name="detector_slice_z_min" default="1.15" />
+  <arg name="detector_slice_z_max" default="1.45" />
+  <arg name="detector_min_diameter" default="0.15" />
+  <arg name="detector_max_diameter" default="1.00" />
+  <arg name="detector_max_points" default="180000" />
   <arg name="experiment_seed" default="-1" />
 
   <!-- Plotter -->
@@ -107,12 +115,20 @@
     <arg name="clustering_mode" value="$(arg detector_clustering_mode)" />
     <arg name="dbscan_eps" value="$(arg detector_dbscan_eps)" />
     <arg name="dbscan_min_samples" value="$(arg detector_dbscan_min_samples)" />
+    <arg name="min_cluster_points" value="$(arg detector_min_cluster_points)" />
     <arg name="enable_gmm_split" value="$(arg detector_enable_gmm_split)" />
     <arg name="gmm_radius_threshold" value="$(arg detector_gmm_radius_threshold)" />
     <arg name="gmm_min_points" value="$(arg detector_gmm_min_points)" />
     <arg name="gmm_components" value="$(arg detector_gmm_components)" />
     <arg name="gmm_min_center_dist" value="$(arg detector_gmm_min_center_dist)" />
+    <arg name="ransac_iterations" value="$(arg detector_ransac_iterations)" />
+    <arg name="ransac_distance_threshold" value="$(arg detector_ransac_distance_threshold)" />
     <arg name="ransac_min_inlier_ratio" value="$(arg detector_ransac_min_inlier_ratio)" />
+    <arg name="slice_z_min" value="$(arg detector_slice_z_min)" />
+    <arg name="slice_z_max" value="$(arg detector_slice_z_max)" />
+    <arg name="min_diameter" value="$(arg detector_min_diameter)" />
+    <arg name="max_diameter" value="$(arg detector_max_diameter)" />
+    <arg name="max_points" value="$(arg detector_max_points)" />
     <arg name="experiment_seed" value="$(arg experiment_seed)" />
   </include>
 

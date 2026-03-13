@@ -1,8 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
+load_experiment_context() {
+  local context_file="${EXPERIMENT_CONTEXT_FILE:-/tmp/daeplanner_current_run.env}"
+  if [[ -f "${context_file}" ]]; then
+    # shellcheck disable=SC1090
+    set -a
+    source "${context_file}"
+    set +a
+    echo "[exploration] loaded context: ${context_file}"
+  fi
+}
+
 cd
 source .bashrc
+load_experiment_context
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: exploration.sh <config_file> [seed] [max_time_sec]"
@@ -48,30 +60,39 @@ if [[ -n "$seed" && "$seed" =~ ^-?[0-9]+$ ]]; then
 fi
 
 save_octomap_with_seed_and_timestamp() {
-  local ts seed_tag config_tag octomap_name octomap_path
+  local ts seed_tag config_tag run_tag octomap_name octomap_base octomap_file octomap_dir octomap_topic
   ts="$(date +%Y%m%d_%H%M%S)"
   if [[ -n "$seed" && "$seed" =~ ^-?[0-9]+$ ]]; then
     seed_tag="seed${seed}"
   else
     seed_tag="seedNA"
   fi
+  if [[ -n "${EXPERIMENT_RUN_ID:-}" ]]; then
+    run_tag="${EXPERIMENT_RUN_ID}"
+  else
+    run_tag="runNA"
+  fi
   config_tag="$(basename "$config")"
   config_tag="${config_tag%.*}"
   config_tag="${config_tag//[^a-zA-Z0-9_-]/_}"
 
-  octomap_name="octomap_${config_tag}_${seed_tag}_${ts}"
-  octomap_path="/home/daep/octomaps/${octomap_name}"
-  mkdir -p /home/daep/octomaps
+  octomap_dir="${EXPERIMENT_OCTOMAP_DIR:-/home/daep/octomaps}"
+  octomap_topic="${EXPERIMENT_OCTOMAP_TOPIC:-/aeplanner/octomap_full}"
+  octomap_name="octomap_${run_tag}_${config_tag}_${seed_tag}_${ts}"
+  octomap_base="${octomap_dir}/${octomap_name}"
+  octomap_file="${octomap_base}.bt"
+  mkdir -p "${octomap_dir}"
 
-  if rostopic list 2>/dev/null | grep -qx "/aeplanner/octomap_full"; then
+  if rostopic list 2>/dev/null | grep -qx "${octomap_topic}"; then
     echo "Saving octomap: ${octomap_name}.bt"
-    if rosrun octomap_server octomap_saver -f "$octomap_path" octomap_full:=/aeplanner/octomap_full >/dev/null; then
-      echo "Octomap saved at: ${octomap_path}.bt"
+    if rosrun octomap_server octomap_saver -f "$octomap_base" "octomap_full:=${octomap_topic}" >/dev/null \
+       && [[ -s "$octomap_file" ]]; then
+      echo "Octomap saved at: ${octomap_file}"
     else
-      echo "Warning: failed to save octomap from /aeplanner/octomap_full"
+      echo "Warning: failed to save octomap from ${octomap_topic} to ${octomap_file}"
     fi
   else
-    echo "Warning: topic /aeplanner/octomap_full not available; octomap not saved"
+    echo "Warning: topic ${octomap_topic} not available; octomap not saved"
   fi
 }
 
