@@ -377,6 +377,7 @@ RrtNode* Rrt::chooseParent(kdtree* kd_tree, Eigen::Vector3d node, double l)
   kdres* nearest = kd_nearest_range3(kd_tree, node[0], node[1], node[2], l + 0.5);
   if (kd_res_size(nearest) <= 0)
   {
+    kd_res_free(nearest);
     nearest = kd_nearest3(kd_tree, node[0], node[1], node[2]);
   }
   if (kd_res_size(nearest) <= 0)
@@ -419,6 +420,7 @@ void Rrt::rewire(kdtree* kd_tree, RrtNode* new_node, double l, double r, double 
     }
     kd_res_next(nearest);
   }
+  kd_res_free(nearest);
 }
 
 Eigen::Vector3d Rrt::getNewPosNormalized(Eigen::Vector3d sampled, Eigen::Vector3d parent,

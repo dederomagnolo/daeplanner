@@ -149,9 +149,10 @@ done
 
 if [[ "${save_octomap}" = "true" ]]; then
   if topic_exists "${octomap_topic}"; then
-    rosrun octomap_server octomap_saver -f "${dest}/octomap_${tag}" "octomap_full:=${octomap_topic}" >/dev/null || true
-    if [[ -s "${dest}/octomap_${tag}.bt" ]]; then
-      echo "[save] octomap saved: ${dest}/octomap_${tag}.bt"
+    octomap_path="${dest}/octomap_${tag}.bt"
+    rosrun octomap_server octomap_saver -f "${octomap_path}" "octomap_full:=${octomap_topic}" >/dev/null || true
+    if [[ -s "${octomap_path}" ]]; then
+      echo "[save] octomap saved: ${octomap_path}"
     else
       echo "[warn] octomap save requested but file not created"
     fi

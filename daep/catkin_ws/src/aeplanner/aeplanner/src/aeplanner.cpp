@@ -753,7 +753,10 @@ RRTNode* AEPlanner::chooseParent(RRTNode* node, double l)
                                      node->state_[2], l + 0.5); // FIXME why +0.5?
 
   if (kd_res_size(nearest) <= 0)
+  {
+    kd_res_free(nearest);
     nearest = kd_nearest3(kd_tree_, node->state_[0], node->state_[1], node->state_[2]);
+  }
   if (kd_res_size(nearest) <= 0)
   {
     kd_res_free(nearest);
@@ -802,6 +805,7 @@ void AEPlanner::rewire(kdtree* kd_tree, RRTNode* new_node, double l, double r,
     }
     kd_res_next(nearest);
   }
+  kd_res_free(nearest);
 }
 
 Eigen::Vector4d AEPlanner::restrictDistance(Eigen::Vector4d nearest,

@@ -41,6 +41,22 @@ Ou com tag custom:
 Os snapshots manuais são salvos em:
 `<run_dir>/snapshots/<tag>`
 
+### 3.1) Snapshot periódico (ex.: a cada 10 minutos)
+Iniciar em background:
+```bash
+./daep/experiment_run.sh autosnapshot start --interval-sec 600
+```
+
+Ver status:
+```bash
+./daep/experiment_run.sh autosnapshot status
+```
+
+Parar:
+```bash
+./daep/experiment_run.sh autosnapshot stop
+```
+
 ### 4) Fechar experimento (salva octomap primeiro + gera relatório final)
 ```bash
 ./daep/experiment_run.sh finalize
@@ -50,6 +66,7 @@ Fluxo do `finalize`:
 1. sincroniza CSV/JSON para `<run_dir>/data`
 2. salva octomap final em `<run_dir>/octomaps`
 3. roda `export_experiment_report.py` e grava em `<run_dir>/result`
+4. valida e informa o caminho do resumo em Markdown: `<run_dir>/result/summary.md`
 
 ### 5) Verificar run ativa
 ```bash

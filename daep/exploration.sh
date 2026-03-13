@@ -85,7 +85,7 @@ save_octomap_with_seed_and_timestamp() {
 
   if rostopic list 2>/dev/null | grep -qx "${octomap_topic}"; then
     echo "Saving octomap: ${octomap_name}.bt"
-    if rosrun octomap_server octomap_saver -f "$octomap_base" "octomap_full:=${octomap_topic}" >/dev/null \
+    if rosrun octomap_server octomap_saver -f "$octomap_file" "octomap_full:=${octomap_topic}" >/dev/null \
        && [[ -s "$octomap_file" ]]; then
       echo "Octomap saved at: ${octomap_file}"
     else
