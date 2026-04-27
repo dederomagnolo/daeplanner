@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import math
+import csv
+import os
 import random
 from collections import deque
 
@@ -46,6 +48,9 @@ class TreeDetectorNode(object):
         self.cluster_points_topic = rospy.get_param("~cluster_points_topic", "/tree_detector_cluster_points")
         self.cluster_labels_topic = rospy.get_param("~cluster_labels_topic", "/tree_detector_cluster_labels")
         self.detection_radius_topic = rospy.get_param("~detection_radius_topic", "/tree_detection_radii")
+        self.history_csv_output_path = os.path.abspath(
+            os.path.expanduser(rospy.get_param("~history_csv_output_path", ""))
+        ) if rospy.get_param("~history_csv_output_path", "") else ""
 
         self.slice_z_min = rospy.get_param("~slice_z_min", 1.15)
         self.slice_z_max = rospy.get_param("~slice_z_max", 1.45)
@@ -102,14 +107,110 @@ class TreeDetectorNode(object):
             self.clustering_mode = "grid_cc"
 
         rospy.loginfo(
-            "tree_detector_node listening on %s (target_frame=%s mode=%s array_out=%s seed=%d gmm_seed=%d)",
+            "tree_detector_node listening on %s (target_frame=%s mode=%s array_out=%s seed=%d gmm_seed=%d history=%s)",
             self.input_cloud_topic,
             self.target_frame,
             self.clustering_mode,
             self.output_array_topic,
             self.experiment_seed,
             self.gmm_random_state,
+            self.history_csv_output_path if self.history_csv_output_path else "(disabled)",
         )
+
+    @staticmethod
+    def _ensure_parent_dir(path):
+        if not path:
+            return
+        parent = os.path.dirname(path)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent)
+
+    @staticmethod
+    def _stamp_sec(header):
+        try:
+            if header.stamp and header.stamp.to_sec() > 0.0:
+                return header.stamp.to_sec()
+        except Exception:
+            pass
+        return rospy.Time.now().to_sec()
+
+    def _append_history_csv(self, header, detections, cloud_points, trunk_points):
+        if not self.history_csv_output_path:
+            return
+
+        self._ensure_parent_dir(self.history_csv_output_path)
+        write_header = (not os.path.exists(self.history_csv_output_path)) or (
+            os.path.getsize(self.history_csv_output_path) == 0
+        )
+        fields = [
+            "stamp_sec",
+            "frame_id",
+            "cloud_points",
+            "trunk_points",
+            "detection_count",
+            "detection_id",
+            "x",
+            "y",
+            "z",
+            "radius_m",
+            "diameter_m",
+            "cluster_label",
+            "cluster_points",
+            "fit_error",
+            "confidence",
+            "clustering_mode",
+        ]
+        stamp_sec = self._stamp_sec(header)
+        frame_id = header.frame_id if header and header.frame_id else ""
+
+        with open(self.history_csv_output_path, "a") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(fields)
+            if not detections:
+                writer.writerow(
+                    [
+                        "%.3f" % stamp_sec,
+                        frame_id,
+                        int(cloud_points),
+                        int(trunk_points),
+                        0,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        self.clustering_mode,
+                    ]
+                )
+                return
+
+            for i, det in enumerate(detections):
+                writer.writerow(
+                    [
+                        "%.3f" % stamp_sec,
+                        frame_id,
+                        int(cloud_points),
+                        int(trunk_points),
+                        len(detections),
+                        i + 1,
+                        "%.6f" % det["x"],
+                        "%.6f" % det["y"],
+                        "%.6f" % det["z"],
+                        "%.6f" % det["radius"],
+                        "%.6f" % det["diameter"],
+                        int(det["cluster_label"]),
+                        int(det["cluster_points"]),
+                        "%.6f" % det["fit_error"],
+                        "%.6f" % det["confidence"],
+                        self.clustering_mode,
+                    ]
+                )
 
     def _to_cell(self, x, y):
         return (int(np.floor(x / self.cell_size)), int(np.floor(y / self.cell_size)))
@@ -471,6 +572,7 @@ class TreeDetectorNode(object):
             return
 
         if points.shape[0] < 20:
+            self._append_history_csv(msg.header, [], points.shape[0], 0)
             self._publish_empty(msg.header)
             return
 
@@ -480,6 +582,7 @@ class TreeDetectorNode(object):
 
         trunk = points[(points[:, 2] >= self.slice_z_min) & (points[:, 2] <= self.slice_z_max)]
         if trunk.shape[0] < 20:
+            self._append_history_csv(msg.header, [], points.shape[0], trunk.shape[0])
             self._publish_empty(msg.header)
             return
 
@@ -488,6 +591,7 @@ class TreeDetectorNode(object):
         else:
             detections, cluster_points, cluster_labels = self._detect_grid_cc(trunk)
 
+        self._append_history_csv(msg.header, detections, points.shape[0], trunk.shape[0])
         self._publish_legacy(msg.header, detections, cluster_points, cluster_labels)
         self._publish_unified(msg.header, detections)
 

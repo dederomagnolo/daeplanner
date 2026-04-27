@@ -8,6 +8,7 @@
   <arg name="cluster_points_topic" default="/tree_detector_cluster_points" />
   <arg name="cluster_labels_topic" default="/tree_detector_cluster_labels" />
   <arg name="detection_radius_topic" default="/tree_detection_radii" />
+  <arg name="history_csv_output_path" default="" />
 
   <arg name="clustering_mode" default="dbscan_gmm" />
   <arg name="dbscan_eps" default="0.30" />
@@ -38,6 +39,7 @@
     <param name="cluster_points_topic" value="$(arg cluster_points_topic)" />
     <param name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
     <param name="detection_radius_topic" value="$(arg detection_radius_topic)" />
+    <param name="history_csv_output_path" value="$(arg history_csv_output_path)" />
     <param name="clustering_mode" value="$(arg clustering_mode)" />
     <param name="dbscan_eps" value="$(arg dbscan_eps)" />
     <param name="dbscan_min_samples" value="$(arg dbscan_min_samples)" />

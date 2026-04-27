@@ -80,6 +80,8 @@ write_context_file() {
     printf 'EXPERIMENT_CONTEXT_FILE=%q\n' "${ctx_path}"
     printf 'TREE_MAP_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.csv"
     printf 'TREE_MAP_JSON_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.json"
+    printf 'TREE_MAP_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_history.csv"
+    printf 'TREE_DETECTION_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_detection_history.csv"
   } > "${ctx_path}"
 }
 
@@ -87,6 +89,8 @@ sync_data_into_run() {
   local files=(
     tree_map_final.csv
     tree_map_final.json
+    tree_map_history.csv
+    tree_detection_history.csv
     coverage.csv
     path.csv
     logfile.csv

@@ -74,12 +74,16 @@ class TreeMapFuser(object):
         self.json_output_path = self._normalize_path(
             rospy.get_param("~json_output_path", "/tmp/tree_map_final.json")
         )
+        self.history_csv_output_path = self._normalize_path(
+            rospy.get_param("~history_csv_output_path", "")
+        )
 
         self.lock = threading.Lock()
         self.latest_ids = []
         self.next_map_id = 1
         self.entries = {}  # map_id -> state
         self.source_to_map = {}  # tracker_id -> map_id
+        self.history_export_seq = 0
 
         self.last_header = None
         self.last_log_time = 0.0
@@ -684,6 +688,7 @@ class TreeMapFuser(object):
 
     def _export_files(self, reason):
         frame_id, rows = self._snapshot_rows()
+        exported_at_sec = rospy.Time.now().to_sec()
         exported = False
 
         if self.csv_output_path:
@@ -741,7 +746,7 @@ class TreeMapFuser(object):
         if self.json_output_path:
             payload = {
                 "frame_id": frame_id,
-                "exported_at_sec": rospy.Time.now().to_sec(),
+                "exported_at_sec": exported_at_sec,
                 "count_total": len(rows),
                 "count_confirmed": len([r for r in rows if r["confirmed"]]),
                 "trees": rows,
@@ -754,14 +759,118 @@ class TreeMapFuser(object):
             except Exception as ex:
                 rospy.logwarn("tree_map_fuser failed JSON export: %s", ex)
 
+        if self.history_csv_output_path:
+            try:
+                self._append_history_csv(reason, frame_id, exported_at_sec, rows)
+                exported = True
+            except Exception as ex:
+                rospy.logwarn("tree_map_fuser failed history CSV export: %s", ex)
+
         if exported:
             rospy.loginfo(
-                "tree_map_fuser export(%s): %d trees -> %s %s",
+                "tree_map_fuser export(%s): %d trees -> %s %s %s",
                 reason,
                 len(rows),
                 self.csv_output_path if self.csv_output_path else "(csv:disabled)",
                 self.json_output_path if self.json_output_path else "(json:disabled)",
+                self.history_csv_output_path if self.history_csv_output_path else "(history:disabled)",
             )
+
+    def _append_history_csv(self, reason, frame_id, exported_at_sec, rows):
+        self._ensure_parent_dir(self.history_csv_output_path)
+        write_header = (not os.path.exists(self.history_csv_output_path)) or (
+            os.path.getsize(self.history_csv_output_path) == 0
+        )
+        self.history_export_seq += 1
+        count_confirmed = len([r for r in rows if r["confirmed"]])
+        fields = [
+            "export_seq",
+            "exported_at_sec",
+            "reason",
+            "frame_id",
+            "count_total",
+            "count_confirmed",
+            "map_id",
+            "x",
+            "y",
+            "z",
+            "diameter_m",
+            "gt_diameter_m",
+            "diameter_error_m",
+            "diameter_sq_error_m2",
+            "hits",
+            "std_xy",
+            "std_diameter",
+            "confidence",
+            "confirmed",
+            "suspect_merge",
+            "age_sec",
+            "last_seen_sec",
+            "source_ids",
+        ]
+
+        with open(self.history_csv_output_path, "a") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(fields)
+            if not rows:
+                writer.writerow(
+                    [
+                        self.history_export_seq,
+                        "%.3f" % exported_at_sec,
+                        reason,
+                        frame_id,
+                        0,
+                        0,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                    ]
+                )
+                return
+
+            for row in rows:
+                writer.writerow(
+                    [
+                        self.history_export_seq,
+                        "%.3f" % exported_at_sec,
+                        reason,
+                        frame_id,
+                        len(rows),
+                        count_confirmed,
+                        row["map_id"],
+                        "%.6f" % row["x"],
+                        "%.6f" % row["y"],
+                        "%.6f" % row["z"],
+                        "%.6f" % row["diameter_m"],
+                        "%.6f" % row["gt_diameter_m"],
+                        "%.6f" % row["diameter_error_m"],
+                        "%.6f" % row["diameter_sq_error_m2"],
+                        row["hits"],
+                        "%.6f" % row["std_xy"],
+                        "%.6f" % row["std_diameter"],
+                        "%.6f" % row["confidence"],
+                        int(row["confirmed"]),
+                        int(row["suspect_merge"]),
+                        "%.3f" % row["age_sec"],
+                        "%.3f" % row["last_seen_sec"],
+                        ";".join([str(v) for v in row["source_ids"]]),
+                    ]
+                )
 
     def export_timer_cb(self, _):
         self._export_files("periodic")

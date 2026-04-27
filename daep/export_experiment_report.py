@@ -357,6 +357,277 @@ def write_matching_csv(path: Path, rows: List[dict]) -> None:
             w.writerow(out)
 
 
+def load_map_history(csv_path: Path) -> List[dict]:
+    snapshots = {}
+    order = []
+    with csv_path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            exported_at_sec = _get_float(row, "exported_at_sec")
+            raw_seq = str(row.get("export_seq", "")).strip()
+            key = "{}:{:.3f}".format(raw_seq, exported_at_sec) if raw_seq else "{:.3f}".format(exported_at_sec)
+            if key not in snapshots:
+                snapshots[key] = {
+                    "export_seq": _get_int(row, "export_seq", len(order) + 1),
+                    "exported_at_sec": exported_at_sec,
+                    "reason": str(row.get("reason", "")).strip(),
+                    "frame_id": str(row.get("frame_id", "")).strip(),
+                    "count_total": _get_int(row, "count_total"),
+                    "count_confirmed": _get_int(row, "count_confirmed"),
+                    "maps": [],
+                }
+                order.append(key)
+
+            map_id = str(row.get("map_id", "")).strip()
+            if not map_id:
+                continue
+
+            snapshots[key]["maps"].append(
+                {
+                    "map_id": _get_int(row, "map_id", -1),
+                    "x": _get_float(row, "x"),
+                    "y": _get_float(row, "y"),
+                    "z": _get_float(row, "z"),
+                    "diameter_m": _get_float(row, "diameter_m"),
+                    "hits": _get_int(row, "hits"),
+                    "std_xy": _get_float(row, "std_xy"),
+                    "std_diameter": _get_float(row, "std_diameter"),
+                    "confidence": _get_float(row, "confidence"),
+                    "confirmed": _get_int(row, "confirmed"),
+                    "suspect_merge": _get_int(row, "suspect_merge"),
+                }
+            )
+
+    out = [snapshots[key] for key in order]
+    out.sort(key=lambda s: (s["exported_at_sec"], s["export_seq"]))
+    for snap in out:
+        if snap["count_total"] <= 0 and snap["maps"]:
+            snap["count_total"] = len(snap["maps"])
+        if snap["count_confirmed"] <= 0 and snap["maps"]:
+            snap["count_confirmed"] = sum(int(m.get("confirmed", 0)) for m in snap["maps"])
+    return out
+
+
+def _seconds_to_minutes(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return float(value) / 60.0
+
+
+def compute_temporal_discovery(
+    truth: List[dict],
+    snapshots: List[dict],
+    selected_threshold_m: float,
+) -> Tuple[Optional[dict], List[dict]]:
+    if not truth or not snapshots:
+        return None, []
+
+    t0 = snapshots[0]["exported_at_sec"]
+    cumulative_truth_ids = set()
+    rows = []
+
+    for snap in snapshots:
+        rel_sec = max(0.0, snap["exported_at_sec"] - t0)
+        maps_all = list(snap.get("maps", []))
+        maps_confirmed = [m for m in maps_all if int(m.get("confirmed", 0)) == 1]
+
+        sorted_pairs = _sorted_pairs(truth, maps_confirmed)
+        keep, fn, fp = _one_to_one(sorted_pairs, len(truth), len(maps_confirmed), selected_threshold_m)
+        precision, recall, f1 = _prf(len(keep), len(fn), len(fp))
+
+        matched_truth_ids = []
+        match_errors = []
+        for dist, ti, _ in keep:
+            matched_truth_ids.append(truth[ti]["tree_id"])
+            match_errors.append(dist)
+        cumulative_truth_ids.update(matched_truth_ids)
+
+        cumulative_tp = len(cumulative_truth_ids)
+        cumulative_recall = float(cumulative_tp) / float(len(truth))
+        mean_match_error = sum(match_errors) / float(len(match_errors)) if match_errors else None
+
+        rows.append(
+            {
+                "export_seq": snap["export_seq"],
+                "time_sec": rel_sec,
+                "time_min": _seconds_to_minutes(rel_sec),
+                "total_count": snap["count_total"],
+                "confirmed_count": snap["count_confirmed"],
+                "candidate_count": max(int(snap["count_total"]) - int(snap["count_confirmed"]), 0),
+                "tp": len(keep),
+                "fn": len(fn),
+                "fp": len(fp),
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "cumulative_tp": cumulative_tp,
+                "cumulative_recall": cumulative_recall,
+                "mean_match_error_m": mean_match_error,
+            }
+        )
+
+    duration_sec = rows[-1]["time_sec"] if rows else 0.0
+    auc = 0.0
+    if len(rows) == 1:
+        auc = rows[0]["cumulative_recall"]
+    elif duration_sec > 0.0:
+        for prev, cur in zip(rows[:-1], rows[1:]):
+            dt_sec = max(cur["time_sec"] - prev["time_sec"], 0.0)
+            auc += 0.5 * (prev["cumulative_recall"] + cur["cumulative_recall"]) * dt_sec
+        auc = auc / duration_sec
+
+    def first_time_for_recall(target: float) -> Optional[float]:
+        for row in rows:
+            if row["cumulative_recall"] >= target:
+                return row["time_sec"]
+        return None
+
+    final = rows[-1]
+    summary = {
+        "source": "tree_map_history.csv",
+        "scope": "confirmed_only",
+        "match_threshold_m": selected_threshold_m,
+        "snapshot_count": len(rows),
+        "target_count": len(truth),
+        "duration_sec": duration_sec,
+        "duration_min": _seconds_to_minutes(duration_sec),
+        "final_tp": final["tp"],
+        "final_fn": final["fn"],
+        "final_fp": final["fp"],
+        "final_precision": final["precision"],
+        "final_recall": final["recall"],
+        "final_f1": final["f1"],
+        "final_cumulative_tp": final["cumulative_tp"],
+        "final_cumulative_recall": final["cumulative_recall"],
+        "peak_cumulative_tp": max(r["cumulative_tp"] for r in rows),
+        "peak_cumulative_recall": max(r["cumulative_recall"] for r in rows),
+        "recall_auc_normalized": auc,
+        "time_to_first_tp_sec": first_time_for_recall(1.0 / float(len(truth))),
+        "time_to_25pct_sec": first_time_for_recall(0.25),
+        "time_to_50pct_sec": first_time_for_recall(0.50),
+        "time_to_80pct_sec": first_time_for_recall(0.80),
+        "time_to_100pct_sec": first_time_for_recall(1.00),
+    }
+    for key in ("time_to_first_tp_sec", "time_to_25pct_sec", "time_to_50pct_sec", "time_to_80pct_sec", "time_to_100pct_sec"):
+        summary[key.replace("_sec", "_min")] = _seconds_to_minutes(summary[key])
+
+    return summary, rows
+
+
+def write_temporal_timeseries_csv(path: Path, rows: List[dict]) -> None:
+    fields = [
+        "export_seq",
+        "time_sec",
+        "time_min",
+        "total_count",
+        "confirmed_count",
+        "candidate_count",
+        "tp",
+        "fn",
+        "fp",
+        "precision",
+        "recall",
+        "f1",
+        "cumulative_tp",
+        "cumulative_recall",
+        "mean_match_error_m",
+    ]
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for row in rows:
+            out = dict(row)
+            for key in ("time_sec", "time_min", "precision", "recall", "f1", "cumulative_recall"):
+                out[key] = "{:.6f}".format(row[key])
+            out["mean_match_error_m"] = "" if row["mean_match_error_m"] is None else "{:.6f}".format(row["mean_match_error_m"])
+            w.writerow(out)
+
+
+def write_temporal_summary_csv(path: Path, summary: dict) -> None:
+    fields = [
+        "source",
+        "scope",
+        "match_threshold_m",
+        "snapshot_count",
+        "target_count",
+        "duration_sec",
+        "duration_min",
+        "final_tp",
+        "final_fn",
+        "final_fp",
+        "final_precision",
+        "final_recall",
+        "final_f1",
+        "final_cumulative_tp",
+        "final_cumulative_recall",
+        "peak_cumulative_tp",
+        "peak_cumulative_recall",
+        "recall_auc_normalized",
+        "time_to_first_tp_sec",
+        "time_to_first_tp_min",
+        "time_to_25pct_sec",
+        "time_to_25pct_min",
+        "time_to_50pct_sec",
+        "time_to_50pct_min",
+        "time_to_80pct_sec",
+        "time_to_80pct_min",
+        "time_to_100pct_sec",
+        "time_to_100pct_min",
+    ]
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerow(summary)
+
+
+def write_temporal_svg(path: Path, rows: List[dict], title: str) -> None:
+    width = 900
+    height = 460
+    left = 70
+    right = 30
+    top = 45
+    bottom = 65
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+    max_time = max([r["time_min"] for r in rows] + [1.0])
+
+    def sx(t_min: float) -> float:
+        return left + (float(t_min) / max_time) * plot_w
+
+    def sy(v: float) -> float:
+        return top + (1.0 - max(0.0, min(1.0, float(v)))) * plot_h
+
+    def poly(metric: str, color: str) -> str:
+        points = " ".join("{:.2f},{:.2f}".format(sx(r["time_min"]), sy(r[metric])) for r in rows)
+        return '<polyline fill="none" stroke="{}" stroke-width="2.5" points="{}" />'.format(color, points)
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
+        '<rect width="100%" height="100%" fill="white" />',
+        '<text x="{}" y="28" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(left, title),
+        '<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="#333" />'.format(left, top + plot_h, left + plot_w),
+        '<line x1="{0}" y1="{1}" x2="{0}" y2="{2}" stroke="#333" />'.format(left, top, top + plot_h),
+    ]
+    for value in (0.0, 0.25, 0.5, 0.75, 1.0):
+        y = sy(value)
+        lines.append('<line x1="{0}" y1="{1:.2f}" x2="{2}" y2="{1:.2f}" stroke="#ddd" />'.format(left, y, left + plot_w))
+        lines.append('<text x="18" y="{:.2f}" font-family="Arial" font-size="12">{:.0f}%</text>'.format(y + 4, value * 100.0))
+    for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+        x = left + frac * plot_w
+        t = frac * max_time
+        lines.append('<line x1="{0:.2f}" y1="{1}" x2="{0:.2f}" y2="{2}" stroke="#ddd" />'.format(x, top, top + plot_h))
+        lines.append('<text x="{:.2f}" y="{}" font-family="Arial" font-size="12" text-anchor="middle">{:.1f}</text>'.format(x, height - 35, t))
+    lines.append(poly("cumulative_recall", "#1f77b4"))
+    lines.append(poly("precision", "#ff7f0e"))
+    lines.append(poly("f1", "#2ca02c"))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">tempo (min)</text>'.format(left + plot_w * 0.45, height - 12))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#1f77b4">recall acumulado</text>'.format(left + 15, top + 18))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#ff7f0e">precision</text>'.format(left + 150, top + 18))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#2ca02c">F1</text>'.format(left + 235, top + 18))
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     ns = metrics["nearest_stats"]
     se = metrics["selected_eval"]
@@ -367,6 +638,11 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         if v is None:
             return "N/A"
         return ("{:.%df}" % decimals).format(v)
+
+    def _fmt_min(v: Optional[float]) -> str:
+        if v is None:
+            return "-"
+        return "{:.2f} min".format(v)
 
     def _append_map_stats(lines_out: List[str], title: str, s: dict) -> None:
         lines_out.append("### {}".format(title))
@@ -426,6 +702,43 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     lines.append("- GT sem match: {}".format(se["unmatched_truth_ids"]))
     lines.append("- Map sem match: {}".format(se["unmatched_map_ids"]))
     lines.append("")
+    te = metrics.get("temporal_eval")
+    if te:
+        lines.append("## Descoberta ao Longo do Tempo")
+        lines.append("- Fonte: {}".format(te.get("source", "tree_map_history.csv")))
+        lines.append("- Escopo: {}".format(te.get("scope", "confirmed_only")))
+        lines.append("- Snapshots avaliados: {}".format(te.get("snapshot_count", 0)))
+        lines.append("- Duracao observada: {}".format(_fmt_min(te.get("duration_min"))))
+        lines.append(
+            "- Final TP/FN/FP: {}/{}/{}".format(
+                te.get("final_tp", 0),
+                te.get("final_fn", 0),
+                te.get("final_fp", 0),
+            )
+        )
+        lines.append(
+            "- Final precision/recall/F1: {:.3f}/{:.3f}/{:.3f}".format(
+                te.get("final_precision", 0.0),
+                te.get("final_recall", 0.0),
+                te.get("final_f1", 0.0),
+            )
+        )
+        lines.append(
+            "- Recall acumulado pico/final: {:.3f}/{:.3f}".format(
+                te.get("peak_cumulative_recall", 0.0),
+                te.get("final_cumulative_recall", 0.0),
+            )
+        )
+        lines.append("- AUC recall acumulado normalizado: {:.3f}".format(te.get("recall_auc_normalized", 0.0)))
+        lines.append("- Tempo ate primeira arvore: {}".format(_fmt_min(te.get("time_to_first_tp_min"))))
+        lines.append("- Tempo ate 50%: {}".format(_fmt_min(te.get("time_to_50pct_min"))))
+        lines.append("- Tempo ate 80%: {}".format(_fmt_min(te.get("time_to_80pct_min"))))
+        lines.append("- Tempo ate 100%: {}".format(_fmt_min(te.get("time_to_100pct_min"))))
+        lines.append("")
+    else:
+        lines.append("## Descoberta ao Longo do Tempo")
+        lines.append("- Sem tree_map_history.csv nesta run; gere uma nova run com o stack atualizado para obter curvas temporais.")
+        lines.append("")
     lines.append("## Qualidade do Mapa (diametro)")
     if ms_views:
         _append_map_stats(lines, "all_map", ms_views.get("all_map", {}))
@@ -443,6 +756,10 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     lines.append("- tree_map_diameter_plot.svg (ID/diameter)")
     lines.append("- matching.csv")
     lines.append("- metrics.json")
+    if te:
+        lines.append("- tree_discovery_timeseries.csv")
+        lines.append("- tree_discovery_summary.csv")
+        lines.append("- tree_discovery_curves.svg")
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -565,6 +882,8 @@ def main() -> int:
     required_data_files = [
         "tree_map_final.csv",
         "tree_map_final.json",
+        "tree_map_history.csv",
+        "tree_detection_history.csv",
         "coverage.csv",
         "path.csv",
         "logfile.csv",
@@ -725,6 +1044,30 @@ def main() -> int:
     )
     metrics["experiment_name"] = exp_name
 
+    temporal_paths = []
+    history_csv = exp_dir / "tree_map_history.csv"
+    if history_csv.exists():
+        try:
+            snapshots = load_map_history(history_csv)
+            temporal_summary, temporal_rows = compute_temporal_discovery(
+                truth_rows,
+                snapshots,
+                selected_threshold_m=args.match_threshold,
+            )
+            if temporal_summary and temporal_rows:
+                metrics["temporal_eval"] = temporal_summary
+                temporal_timeseries_path = exp_dir / "tree_discovery_timeseries.csv"
+                temporal_summary_path = exp_dir / "tree_discovery_summary.csv"
+                temporal_svg_path = exp_dir / "tree_discovery_curves.svg"
+                write_temporal_timeseries_csv(temporal_timeseries_path, temporal_rows)
+                write_temporal_summary_csv(temporal_summary_path, temporal_summary)
+                write_temporal_svg(temporal_svg_path, temporal_rows, "{}: Tree discovery over time".format(exp_name))
+                temporal_paths = [temporal_timeseries_path, temporal_summary_path, temporal_svg_path]
+        except Exception as exc:
+            manifest["warnings"].append("Temporal discovery analysis failed: {}".format(exc))
+    else:
+        manifest["warnings"].append("No tree_map_history.csv found; skipped temporal discovery analysis.")
+
     metrics_path = exp_dir / "metrics.json"
     matching_path = exp_dir / "matching.csv"
     summary_path = exp_dir / "summary.md"
@@ -742,7 +1085,7 @@ def main() -> int:
         metrics_path,
         matching_path,
         summary_path,
-    ):
+    ) + tuple(temporal_paths):
         if generated.exists():
             manifest["generated_files"][generated.name] = str(generated.resolve())
 
