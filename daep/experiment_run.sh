@@ -83,6 +83,7 @@ write_context_file() {
     printf 'TREE_MAP_JSON_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.json"
     printf 'TREE_MAP_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_history.csv"
     printf 'TREE_DETECTION_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_detection_history.csv"
+    printf 'TREE_GUIDANCE_WAYPOINTS_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_guidance_waypoints.csv"
     printf 'RRT_TREE_LOG_PATH=%q\n' "${EXPERIMENT_DATA_DIR}/rrt_tree_log.csv"
     printf 'RRT_GOAL_LOG_PATH=%q\n' "${EXPERIMENT_DATA_DIR}/rrt_goal_log.csv"
     printf 'RRT_TREE_LOG_EVERY_N=%q\n' "1"
@@ -95,6 +96,7 @@ sync_data_into_run() {
     tree_map_final.json
     tree_map_history.csv
     tree_detection_history.csv
+    tree_guidance_waypoints.csv
     coverage.csv
     path.csv
     logfile.csv

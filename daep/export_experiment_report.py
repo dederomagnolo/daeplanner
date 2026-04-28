@@ -1594,6 +1594,7 @@ def main() -> int:
         "tree_map_final.json",
         "tree_map_history.csv",
         "tree_detection_history.csv",
+        "tree_guidance_waypoints.csv",
         "coverage.csv",
         "path.csv",
         "logfile.csv",
