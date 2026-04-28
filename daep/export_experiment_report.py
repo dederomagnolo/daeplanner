@@ -159,17 +159,84 @@ def load_path_goals(csv_path: Path) -> List[dict]:
     return goals
 
 
-def path_stats(goals: List[dict]) -> dict:
+def make_xy_box(x_min: float, x_max: float, y_min: float, y_max: float) -> dict:
+    width = max(0.0, float(x_max) - float(x_min))
+    height = max(0.0, float(y_max) - float(y_min))
+    return {
+        "x_min": float(x_min),
+        "x_max": float(x_max),
+        "y_min": float(y_min),
+        "y_max": float(y_max),
+        "width_m": width,
+        "height_m": height,
+        "area_m2": width * height,
+    }
+
+
+def _parse_xy_vector_from_yaml_line(line: str) -> Optional[Tuple[float, float]]:
+    if ":" not in line:
+        return None
+    raw = line.split(":", 1)[1].strip()
+    if not raw:
+        return None
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if len(parts) < 2:
+        return None
+    try:
+        return float(parts[0]), float(parts[1])
+    except Exception:
+        return None
+
+
+def load_config_xy_bbox(planner_config_path: Path) -> Optional[dict]:
+    if not planner_config_path.exists() or (not planner_config_path.is_file()):
+        return None
+    min_xy = None
+    max_xy = None
+    for line in planner_config_path.read_text().splitlines():
+        clean = line.strip()
+        if clean.startswith("boundary/min:"):
+            min_xy = _parse_xy_vector_from_yaml_line(clean)
+        elif clean.startswith("boundary/max:"):
+            max_xy = _parse_xy_vector_from_yaml_line(clean)
+    if not min_xy or not max_xy:
+        return None
+    return make_xy_box(min_xy[0], max_xy[0], min_xy[1], max_xy[1])
+
+
+def path_stats(
+    goals: List[dict],
+    x_min: Optional[float] = None,
+    x_max: Optional[float] = None,
+    y_min: Optional[float] = None,
+    y_max: Optional[float] = None,
+    config_bbox: Optional[dict] = None,
+) -> dict:
     stats = {
         "goal_count": len(goals),
         "path_length_xy_m": 0.0,
         "start": None,
         "end": None,
+        "map_xy": None,
+        "config_xy": None,
+        "config_area_coverage_pct": None,
     }
     if not goals:
         return stats
     stats["start"] = {"x": goals[0]["x"], "y": goals[0]["y"], "z": goals[0]["z"]}
     stats["end"] = {"x": goals[-1]["x"], "y": goals[-1]["y"], "z": goals[-1]["z"]}
+    if config_bbox:
+        stats["config_xy"] = dict(config_bbox)
+    if None not in (x_min, x_max, y_min, y_max):
+        stats["map_xy"] = make_xy_box(float(x_min), float(x_max), float(y_min), float(y_max))
+    map_xy = stats.get("map_xy") or {}
+    cfg_xy = stats.get("config_xy") or {}
+    map_area = float(map_xy.get("area_m2", 0.0))
+    cfg_area = float(cfg_xy.get("area_m2", 0.0))
+    if map_area > 1e-9 and cfg_area > 0.0:
+        stats["config_area_coverage_pct"] = 100.0 * (cfg_area / map_area)
     total = 0.0
     for a, b in zip(goals[:-1], goals[1:]):
         total += math.hypot(b["x"] - a["x"], b["y"] - a["y"])
@@ -1154,6 +1221,7 @@ def write_route_tree_svg(
     x_max: float,
     y_min: float,
     y_max: float,
+    config_bbox: Optional[dict] = None,
 ) -> None:
     width = 900
     height = 680
@@ -1169,6 +1237,10 @@ def write_route_tree_svg(
 
     def sy(y: float) -> float:
         return top + (1.0 - ((float(y) - y_min) / max(y_max - y_min, 1e-6))) * plot_h
+
+    map_w = max(0.0, float(x_max) - float(x_min))
+    map_h = max(0.0, float(y_max) - float(y_min))
+    map_area = map_w * map_h
 
     lines = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
@@ -1188,6 +1260,32 @@ def write_route_tree_svg(
         lines.append('<line x1="{0}" y1="{1:.2f}" x2="{2}" y2="{1:.2f}" stroke="#e5e5e5" />'.format(left, y, left + plot_w))
         lines.append('<text x="{:.2f}" y="{}" font-family="Arial" font-size="11" text-anchor="middle">{:.1f}</text>'.format(x, top + plot_h + 18, x_val))
         lines.append('<text x="{}" y="{:.2f}" font-family="Arial" font-size="11" text-anchor="end">{:.1f}</text>'.format(left - 8, y + 4, y_val))
+
+    map_info = "mapa XY: x[{:.1f},{:.1f}] y[{:.1f},{:.1f}] | tamanho {:.1f} x {:.1f} m | area {:.1f} m2".format(
+        x_min, x_max, y_min, y_max, map_w, map_h, map_area
+    )
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#333">{}</text>'.format(left + 8, top + 16, map_info))
+    if config_bbox:
+        cfg_info = "bbox configuracao XY: x[{:.1f},{:.1f}] y[{:.1f},{:.1f}] | area {:.1f} m2".format(
+            float(config_bbox["x_min"]),
+            float(config_bbox["x_max"]),
+            float(config_bbox["y_min"]),
+            float(config_bbox["y_max"]),
+            float(config_bbox["area_m2"]),
+        )
+        lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#6b46a1">{}</text>'.format(left + 8, top + 32, cfg_info))
+        cb_left = sx(float(config_bbox["x_min"]))
+        cb_right = sx(float(config_bbox["x_max"]))
+        cb_top = sy(float(config_bbox["y_max"]))
+        cb_bottom = sy(float(config_bbox["y_min"]))
+        lines.append(
+            '<rect x="{:.2f}" y="{:.2f}" width="{:.2f}" height="{:.2f}" fill="none" stroke="#9467bd" stroke-width="2" stroke-dasharray="7,5" />'.format(
+                min(cb_left, cb_right),
+                min(cb_top, cb_bottom),
+                abs(cb_right - cb_left),
+                abs(cb_bottom - cb_top),
+            )
+        )
 
     if goals:
         points = " ".join("{:.2f},{:.2f}".format(sx(g["x"]), sy(g["y"])) for g in goals)
@@ -1222,6 +1320,10 @@ def write_route_tree_svg(
     lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">inicio</text>'.format(left + 402, legend_y + 4))
     lines.append('<circle cx="{}" cy="{}" r="5" fill="#d62728" />'.format(left + 460, legend_y))
     lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">fim</text>'.format(left + 472, legend_y + 4))
+    lines.append('<rect x="{:.1f}" y="{:.1f}" width="12" height="12" fill="none" stroke="#333" stroke-width="1.5" />'.format(left + 520, legend_y - 6))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">bbox mapa (analise)</text>'.format(left + 538, legend_y + 4))
+    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#9467bd" stroke-width="2" stroke-dasharray="7,5" />'.format(left + 700, legend_y, left + 736, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">bbox configuracao</text>'.format(left + 742, legend_y + 4))
     lines.append("</svg>")
     path.write_text("\n".join(lines) + "\n")
 
@@ -1374,6 +1476,35 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         lines.append("## Rota Gerada")
         lines.append("- Goals no path.csv: {}".format(ps.get("goal_count", 0)))
         lines.append("- Comprimento XY aproximado entre goals: {:.3f} m".format(ps.get("path_length_xy_m", 0.0)))
+        map_xy = ps.get("map_xy") or {}
+        if map_xy:
+            lines.append(
+                "- Limites XY do mapa (analise): x[{:.3f}, {:.3f}] y[{:.3f}, {:.3f}]".format(
+                    float(map_xy.get("x_min", 0.0)),
+                    float(map_xy.get("x_max", 0.0)),
+                    float(map_xy.get("y_min", 0.0)),
+                    float(map_xy.get("y_max", 0.0)),
+                )
+            )
+            lines.append(
+                "- Area XY do mapa (analise): {:.3f} m2".format(float(map_xy.get("area_m2", 0.0)))
+            )
+        cfg_xy = ps.get("config_xy") or {}
+        if cfg_xy:
+            lines.append(
+                "- Limites XY configurados (planner): x[{:.3f}, {:.3f}] y[{:.3f}, {:.3f}]".format(
+                    float(cfg_xy.get("x_min", 0.0)),
+                    float(cfg_xy.get("x_max", 0.0)),
+                    float(cfg_xy.get("y_min", 0.0)),
+                    float(cfg_xy.get("y_max", 0.0)),
+                )
+            )
+            lines.append(
+                "- Area XY configurada (planner): {:.3f} m2".format(float(cfg_xy.get("area_m2", 0.0)))
+            )
+        coverage_pct = ps.get("config_area_coverage_pct")
+        if coverage_pct is not None:
+            lines.append("- Cobertura bbox configurado vs mapa: {:.2f}%".format(float(coverage_pct)))
         lines.append("- Grafico: route_trees_ground_truth.svg")
         lines.append("")
     rs = metrics.get("rrt_stats")
@@ -1476,6 +1607,7 @@ def main() -> int:
     host_octomaps_dir = Path("/home/daep/octomaps")
     host_base_out = Path("/home/daep/experimentos")
     host_world = Path("/home/daep/catkin_ws/src/drone_gazebo/worlds/world_jean.world")
+    host_planner_config = Path("/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml")
     host_ti_scripts = Path("/home/daep/catkin_ws/src/tree_identifier/scripts")
     host_svg_pkl_plotter = Path("/home/daep/meus-resultados/plot_pickle_svg.py")
 
@@ -1484,6 +1616,7 @@ def main() -> int:
     local_octomaps_dir = script_dir / "octomaps"
     local_base_out = script_dir / "experimentos"
     local_world = script_dir / "catkin_ws/src/drone_gazebo/worlds/world_jean.world"
+    local_planner_config = script_dir / "catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml"
     local_ti_scripts = script_dir / "catkin_ws/src/tree_identifier/scripts"
     local_svg_pkl_plotter = script_dir / "meus-resultados/plot_pickle_svg.py"
 
@@ -1492,6 +1625,7 @@ def main() -> int:
     default_octomaps_dir = resolve_default_path(host_octomaps_dir, local_octomaps_dir)
     default_base_out = resolve_default_path(host_base_out, local_base_out)
     default_world = resolve_default_path(host_world, local_world)
+    default_planner_config = resolve_default_path(host_planner_config, local_planner_config)
     default_ti_scripts = resolve_default_path(host_ti_scripts, local_ti_scripts)
     default_svg_pkl_plotter = resolve_default_path(host_svg_pkl_plotter, local_svg_pkl_plotter)
 
@@ -1505,6 +1639,7 @@ def main() -> int:
     parser.add_argument("--runtime-snapshots-dir", default="", help="Directory containing manual/autosnapshot folders.")
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
     parser.add_argument("--world", default=str(default_world), help="Path to Gazebo .world file.")
+    parser.add_argument("--planner-config", default=str(default_planner_config), help="Planner YAML with boundary/min and boundary/max.")
     parser.add_argument("--uri-filter", default="world_jean_tree", help="URI filter used for GT extraction.")
     parser.add_argument("--x-min", type=float, default=-10.0)
     parser.add_argument("--x-max", type=float, default=10.0)
@@ -1570,6 +1705,7 @@ def main() -> int:
     exp_dir.mkdir(parents=True, exist_ok=True)
 
     world_path = Path(args.world).expanduser().resolve()
+    planner_config_path = Path(args.planner_config).expanduser().resolve()
     ti_scripts_dir = Path(args.tree_identifier_scripts_dir).expanduser().resolve()
     pkl_svg_plotter = Path(args.pkl_svg_plotter).expanduser().resolve()
 
@@ -1816,8 +1952,13 @@ def main() -> int:
         manifest["warnings"].append("No runtime snapshots with tree_map_final.csv found; skipped snapshot summary.")
 
     route_paths = []
+    config_bbox = load_config_xy_bbox(planner_config_path)
+    if not config_bbox:
+        manifest["warnings"].append(
+            "Planner config boundary (boundary/min, boundary/max) not found; route plot will show only map limits."
+        )
     goals = load_path_goals(path_csv_path)
-    route_stats = path_stats(goals)
+    route_stats = path_stats(goals, args.x_min, args.x_max, args.y_min, args.y_max, config_bbox=config_bbox)
     metrics["path_stats"] = route_stats
     if goals:
         route_svg = exp_dir / "route_trees_ground_truth.svg"
@@ -1831,6 +1972,7 @@ def main() -> int:
             args.x_max,
             args.y_min,
             args.y_max,
+            config_bbox=config_bbox,
         )
         route_paths = [route_svg]
     else:
