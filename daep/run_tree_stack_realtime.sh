@@ -23,7 +23,7 @@ target_frame="${2:-world}"
 run_plotter="${RUN_PLOTTER:-true}"
 run_cluster_plotter="${RUN_CLUSTER_PLOTTER:-true}"
 run_fuser="${RUN_FUSER:-true}"
-detector_require_sklearn="${DETECTOR_REQUIRE_SKLEARN:-true}"
+detector_require_sklearn="${DETECTOR_REQUIRE_SKLEARN:-false}"
 
 cd
 source .bashrc
