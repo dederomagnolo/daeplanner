@@ -48,7 +48,8 @@ class TreeClusterXYPlotter(object):
 
         self.log_throttle_sec = rospy.get_param("~log_throttle_sec", 2.0)
         self.accumulate_history = rospy.get_param("~accumulate_history", True)
-        self.plot_history = rospy.get_param("~plot_history", True)
+        self.plot_history = rospy.get_param("~plot_history", False)
+        self.snapshot_history = rospy.get_param("~snapshot_history", True)
         self.max_history_points = rospy.get_param("~max_history_points", 250000)
         self.history_label_stride = rospy.get_param("~history_label_stride", 1000)
 
@@ -169,9 +170,10 @@ class TreeClusterXYPlotter(object):
             str(self.save_png),
         )
         rospy.loginfo(
-            "tree_cluster_xy_plotter history: accumulate=%s plot_history=%s max_history_points=%d",
+            "tree_cluster_xy_plotter history: accumulate=%s plot_history=%s snapshot_history=%s max_history_points=%d",
             str(self.accumulate_history),
             str(self.plot_history),
+            str(self.snapshot_history),
             int(self.max_history_points),
         )
 
@@ -201,6 +203,7 @@ class TreeClusterXYPlotter(object):
     def _configure_axes(self):
         if not self.fixed_axes:
             return
+        self.ax.set_autoscale_on(False)
         self.ax.set_xlim(self.x_min, self.x_max)
         self.ax.set_ylim(self.y_min, self.y_max)
         if self.tick_step > 0:
@@ -426,7 +429,7 @@ class TreeClusterXYPlotter(object):
         payload_cluster_labels = list(current_aligned_labels)
         cluster_source = "current"
 
-        if self.accumulate_history and self.plot_history and history_cluster_points:
+        if self.accumulate_history and self.snapshot_history and history_cluster_points:
             payload_cluster_points = history_cluster_points
             payload_cluster_labels = history_cluster_labels
             cluster_source = "history"

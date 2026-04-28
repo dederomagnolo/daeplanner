@@ -15,6 +15,7 @@ load_experiment_context() {
 # Usage:
 #   ./run_tree_stack_realtime.sh [input_cloud_topic] [target_frame] [csv_out] [json_out] [snapshot_dir] [experiment_seed]
 #
+# Tree/map histories are taken from the active run context when available.
 # Defaults are tuned for the usual DAEPlanner setup and axis range used in your plots.
 
 input_cloud_topic="${1:-/camera/depth/points}"
@@ -34,16 +35,22 @@ csv_out="${3:-${TREE_MAP_CSV_OUT:-${default_data_dir}/tree_map_final.csv}}"
 json_out="${4:-${TREE_MAP_JSON_OUT:-${default_data_dir}/tree_map_final.json}}"
 snapshot_dir="${5:-${default_snapshot_dir}}"
 experiment_seed="${6:-${EXPERIMENT_SEED:--1}}"
+tree_map_history_out="${TREE_MAP_HISTORY_CSV_OUT:-${default_data_dir}/tree_map_history.csv}"
+tree_detection_history_out="${TREE_DETECTION_HISTORY_CSV_OUT:-${default_data_dir}/tree_detection_history.csv}"
 run_id="${EXPERIMENT_RUN_ID:-}"
 
 mkdir -p "$(dirname "${csv_out}")"
 mkdir -p "$(dirname "${json_out}")"
+mkdir -p "$(dirname "${tree_map_history_out}")"
+mkdir -p "$(dirname "${tree_detection_history_out}")"
 mkdir -p "${snapshot_dir}"
 
 echo "[tree_stack] input_cloud_topic=${input_cloud_topic}"
 echo "[tree_stack] target_frame=${target_frame}"
 echo "[tree_stack] csv_out=${csv_out}"
 echo "[tree_stack] json_out=${json_out}"
+echo "[tree_stack] tree_map_history_out=${tree_map_history_out}"
+echo "[tree_stack] tree_detection_history_out=${tree_detection_history_out}"
 echo "[tree_stack] snapshot_dir=${snapshot_dir}"
 echo "[tree_stack] experiment_seed=${experiment_seed}"
 echo "[tree_stack] detector_require_sklearn=${detector_require_sklearn}"
@@ -64,6 +71,8 @@ roslaunch tree_identifier tree_stack.launch \
   experiment_seed:="${experiment_seed}" \
   fuser_csv_output_path:="${csv_out}" \
   fuser_json_output_path:="${json_out}" \
+  fuser_history_csv_output_path:="${tree_map_history_out}" \
+  detector_history_csv_output_path:="${tree_detection_history_out}" \
   cluster_plotter_snapshot_dir:="${snapshot_dir}" \
   fixed_axes:=true \
   x_min:=-10 x_max:=10 \

@@ -88,7 +88,7 @@ if [[ -z "${json_source}" ]]; then
   json_source="$(pick_data_file tree_map_final.json)"
 fi
 
-extra_data_files="${EXTRA_DATA_FILES:-coverage.csv path.csv logfile.csv intervals.csv collision.csv}"
+extra_data_files="${EXTRA_DATA_FILES:-tree_map_history.csv tree_detection_history.csv coverage.csv path.csv logfile.csv intervals.csv collision.csv rrt_tree_log.csv rrt_goal_log.csv}"
 
 dest="${output_root}/${tag}"
 mkdir -p "${dest}"

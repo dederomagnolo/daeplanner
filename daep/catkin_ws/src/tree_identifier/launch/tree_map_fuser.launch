@@ -35,6 +35,7 @@
   <arg name="auto_export_period_sec" default="5.0" />
   <arg name="csv_output_path" default="/tmp/tree_map_final.csv" />
   <arg name="json_output_path" default="/tmp/tree_map_final.json" />
+  <arg name="history_csv_output_path" default="" />
 
   <node pkg="tree_identifier" type="tree_map_fuser.py" name="tree_map_fuser" output="screen">
     <param name="use_array_input" value="$(arg use_array_input)" />
@@ -70,5 +71,6 @@
     <param name="auto_export_period_sec" value="$(arg auto_export_period_sec)" />
     <param name="csv_output_path" value="$(arg csv_output_path)" />
     <param name="json_output_path" value="$(arg json_output_path)" />
+    <param name="history_csv_output_path" value="$(arg history_csv_output_path)" />
   </node>
 </launch>

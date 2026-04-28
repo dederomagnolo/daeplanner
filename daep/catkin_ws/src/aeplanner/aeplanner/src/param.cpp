@@ -116,6 +116,32 @@ namespace aeplanner
       ROS_WARN_STREAM("No /daep/rrt/max_sampled_nodes specified. Default: " << params.max_sampled_nodes);
     }
 
+    params.rrt_log_path = "";
+    ros::param::get(ns + "/daep/rrt/log_path", params.rrt_log_path);
+
+    params.rrt_goal_log_path = "";
+    ros::param::get(ns + "/daep/rrt/goal_log_path", params.rrt_goal_log_path);
+    if (params.rrt_goal_log_path.empty() && !params.rrt_log_path.empty()) {
+      std::string::size_type sep = params.rrt_log_path.find_last_of('/');
+      if (sep == std::string::npos) {
+        params.rrt_goal_log_path = "rrt_goal_log.csv";
+      } else {
+        params.rrt_goal_log_path = params.rrt_log_path.substr(0, sep + 1) + "rrt_goal_log.csv";
+      }
+    }
+
+    params.rrt_log_enabled = !params.rrt_log_path.empty();
+    ros::param::get(ns + "/daep/rrt/log_enabled", params.rrt_log_enabled);
+
+    params.rrt_log_every_n = 1;
+    if (!ros::param::get(ns + "/daep/rrt/log_every_n", params.rrt_log_every_n)) {
+      ROS_DEBUG_STREAM("No /daep/rrt/log_every_n specified. Default: " << params.rrt_log_every_n);
+    }
+    if (params.rrt_log_every_n < 1) {
+      ROS_WARN_STREAM("/daep/rrt/log_every_n must be >= 1. Using 1.");
+      params.rrt_log_every_n = 1;
+    }
+
     params.cache_node_threshold = 30;
     if (!ros::param::get(ns + "/daep/gain/cache_node_threshold", params.cache_node_threshold)) {
       ROS_WARN_STREAM("No cache_node_threshold specified. Default: " << params.cache_node_threshold);

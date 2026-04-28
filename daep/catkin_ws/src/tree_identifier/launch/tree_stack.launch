@@ -48,10 +48,12 @@
   <arg name="fuser_ground_truth_diameter_m" default="0.30" />
   <arg name="fuser_csv_output_path" default="/tmp/tree_map_final.csv" />
   <arg name="fuser_json_output_path" default="/tmp/tree_map_final.json" />
+  <arg name="fuser_history_csv_output_path" default="" />
   <arg name="detector_publish_debug_clusters" default="$(arg run_cluster_plotter)" />
   <arg name="cluster_points_topic" default="/tree_detector_cluster_points" />
   <arg name="cluster_labels_topic" default="/tree_detector_cluster_labels" />
   <arg name="detection_radius_topic" default="/tree_detection_radii" />
+  <arg name="detector_history_csv_output_path" default="" />
   <arg name="detector_output_array_topic" default="/tree_detections_full" />
   <arg name="detector_clustering_mode" default="dbscan_gmm" />
   <arg name="detector_require_sklearn" default="true" />
@@ -100,7 +102,8 @@
   <arg name="cluster_plotter_show_tree_labels" default="true" />
   <arg name="cluster_plotter_show_map_labels" default="true" />
   <arg name="cluster_plotter_accumulate_history" default="true" />
-  <arg name="cluster_plotter_plot_history" default="true" />
+  <arg name="cluster_plotter_plot_history" default="false" />
+  <arg name="cluster_plotter_snapshot_history" default="true" />
   <arg name="cluster_plotter_max_history_points" default="250000" />
   <arg name="cluster_plotter_history_label_stride" default="1000" />
 
@@ -115,6 +118,7 @@
     <arg name="cluster_points_topic" value="$(arg cluster_points_topic)" />
     <arg name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
     <arg name="detection_radius_topic" value="$(arg detection_radius_topic)" />
+    <arg name="history_csv_output_path" value="$(arg detector_history_csv_output_path)" />
     <arg name="clustering_mode" value="$(arg detector_clustering_mode)" />
     <arg name="require_sklearn" value="$(arg detector_require_sklearn)" />
     <arg name="dbscan_eps" value="$(arg detector_dbscan_eps)" />
@@ -191,6 +195,7 @@
     <arg name="auto_export_period_sec" value="$(arg fuser_auto_export_period_sec)" />
     <arg name="csv_output_path" value="$(arg fuser_csv_output_path)" />
     <arg name="json_output_path" value="$(arg fuser_json_output_path)" />
+    <arg name="history_csv_output_path" value="$(arg fuser_history_csv_output_path)" />
   </include>
 
   <!-- Live XY plot (optional) -->
@@ -249,6 +254,7 @@
     <arg name="log_throttle_sec" value="$(arg log_throttle_sec)" />
     <arg name="accumulate_history" value="$(arg cluster_plotter_accumulate_history)" />
     <arg name="plot_history" value="$(arg cluster_plotter_plot_history)" />
+    <arg name="snapshot_history" value="$(arg cluster_plotter_snapshot_history)" />
     <arg name="max_history_points" value="$(arg cluster_plotter_max_history_points)" />
     <arg name="history_label_stride" value="$(arg cluster_plotter_history_label_stride)" />
     <arg name="snapshot_dir" value="$(arg cluster_plotter_snapshot_dir)" />

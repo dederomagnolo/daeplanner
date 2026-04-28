@@ -60,6 +60,10 @@ namespace aeplanner
 
     double max_sampled_initial_nodes;
     double max_sampled_nodes;
+    bool rrt_log_enabled;
+    std::string rrt_log_path;
+    std::string rrt_goal_log_path;
+    int rrt_log_every_n;
 
     bool drone_freeze;
 

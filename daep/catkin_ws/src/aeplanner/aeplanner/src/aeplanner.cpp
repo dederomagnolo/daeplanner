@@ -44,6 +44,7 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , ot_(NULL)
   , best_node_(NULL)
   , best_branch_root_(NULL)
+  , rrt_log_iteration_(0)
   , dynamic_mode_(false)
   , tree_guidance_log_ready_(false)
 {
@@ -638,6 +639,221 @@ bool AEPlanner::checkCollision(double t,
   return false;
 }
 
+namespace
+{
+bool shouldWriteCsvHeader(const std::string& path)
+{
+  std::ifstream in(path.c_str());
+  if (!in.good()) {
+    return true;
+  }
+  return in.peek() == std::ifstream::traits_type::eof();
+}
+}
+
+void AEPlanner::assignRRTNodeIdsRecursive(RRTNode* node, std::map<RRTNode*, int>& node_ids, int& next_id)
+{
+  if (!node || node_ids.find(node) != node_ids.end()) {
+    return;
+  }
+
+  node_ids[node] = next_id++;
+  for (std::vector<RRTNode*>::iterator node_it = node->children_.begin();
+       node_it != node->children_.end(); ++node_it) {
+    assignRRTNodeIdsRecursive(*node_it, node_ids, next_id);
+  }
+}
+
+RRTNode* AEPlanner::firstChildOnBranch(RRTNode* root, RRTNode* node)
+{
+  if (!root || !node || root == node) {
+    return NULL;
+  }
+
+  RRTNode* current = node;
+  RRTNode* child = NULL;
+  while (current && current != root) {
+    child = current;
+    current = current->parent_;
+  }
+
+  return current == root ? child : NULL;
+}
+
+void AEPlanner::writeRRTNodeLogRecursive(std::ofstream& out,
+                                         RRTNode* node,
+                                         const std::map<RRTNode*, int>& node_ids,
+                                         const std::set<RRTNode*>& best_branch,
+                                         RRTNode* best_node,
+                                         RRTNode* selected_goal_node,
+                                         const std::string& planner_mode,
+                                         double stamp_sec,
+                                         int depth)
+{
+  if (!node) {
+    return;
+  }
+
+  std::map<RRTNode*, int>::const_iterator node_id_it = node_ids.find(node);
+  if (node_id_it == node_ids.end()) {
+    return;
+  }
+
+  int parent_id = -1;
+  if (node->parent_) {
+    std::map<RRTNode*, int>::const_iterator parent_id_it = node_ids.find(node->parent_);
+    if (parent_id_it != node_ids.end()) {
+      parent_id = parent_id_it->second;
+    }
+  }
+
+  out << rrt_log_iteration_ << ","
+      << stamp_sec << ","
+      << planner_mode << ","
+      << node_id_it->second << ","
+      << parent_id << ","
+      << depth << ","
+      << node->state_[0] << ","
+      << node->state_[1] << ","
+      << node->state_[2] << ","
+      << node->state_[3] << ","
+      << node->gain_ << ","
+      << node->dynamic_gain_ << ","
+      << node->dfm_score_ << ","
+      << node->score(params_.lambda) << ","
+      << node->dynamic_score(params_.lambda, params_.zeta) << ","
+      << node->cost() << ","
+      << node->time_cost() << ","
+      << (node->parent_ ? 0 : 1) << ","
+      << (node == best_node ? 1 : 0) << ","
+      << (node == selected_goal_node ? 1 : 0) << ","
+      << (best_branch.find(node) != best_branch.end() ? 1 : 0) << ","
+      << node->children_.size()
+      << "\n";
+
+  for (std::vector<RRTNode*>::iterator node_it = node->children_.begin();
+       node_it != node->children_.end(); ++node_it) {
+    writeRRTNodeLogRecursive(out, *node_it, node_ids, best_branch, best_node, selected_goal_node,
+                             planner_mode, stamp_sec, depth + 1);
+  }
+}
+
+void AEPlanner::logRRTTree(RRTNode* root,
+                           RRTNode* best_node,
+                           RRTNode* selected_goal_node,
+                           const std::string& planner_mode,
+                           bool is_clear)
+{
+  if (!params_.rrt_log_enabled || params_.rrt_log_path.empty() || !root) {
+    return;
+  }
+
+  if (rrt_log_iteration_ % params_.rrt_log_every_n != 0) {
+    return;
+  }
+
+  std::map<RRTNode*, int> node_ids;
+  int next_id = 0;
+  assignRRTNodeIdsRecursive(root, node_ids, next_id);
+
+  std::set<RRTNode*> best_branch;
+  RRTNode* current = best_node;
+  while (current && node_ids.find(current) != node_ids.end()) {
+    best_branch.insert(current);
+    if (current == root) {
+      break;
+    }
+    current = current->parent_;
+  }
+
+  const double stamp_sec = ros::Time::now().toSec();
+
+  bool write_tree_header = shouldWriteCsvHeader(params_.rrt_log_path);
+  std::ofstream tree_out(params_.rrt_log_path.c_str(), std::ios::out | std::ios::app);
+  if (!tree_out.is_open()) {
+    ROS_WARN_STREAM_THROTTLE(30.0, "Could not open RRT tree log: " << params_.rrt_log_path);
+    return;
+  }
+  tree_out << std::fixed << std::setprecision(6);
+  if (write_tree_header) {
+    tree_out << "planning_iteration,stamp_sec,planner_mode,node_id,parent_id,depth,"
+             << "x,y,z,yaw,gain,dynamic_gain,dfm_score,static_score,dynamic_score,cost,time_cost,"
+             << "is_root,is_best_node,is_selected_goal,is_best_branch,child_count\n";
+  }
+  writeRRTNodeLogRecursive(tree_out, root, node_ids, best_branch, best_node, selected_goal_node,
+                           planner_mode, stamp_sec, 0);
+
+  if (params_.rrt_goal_log_path.empty()) {
+    return;
+  }
+
+  bool write_goal_header = shouldWriteCsvHeader(params_.rrt_goal_log_path);
+  std::ofstream goal_out(params_.rrt_goal_log_path.c_str(), std::ios::out | std::ios::app);
+  if (!goal_out.is_open()) {
+    ROS_WARN_STREAM_THROTTLE(30.0, "Could not open RRT goal log: " << params_.rrt_goal_log_path);
+    return;
+  }
+  goal_out << std::fixed << std::setprecision(6);
+  if (write_goal_header) {
+    goal_out << "planning_iteration,stamp_sec,planner_mode,is_clear,tree_node_count,"
+             << "best_node_id,selected_goal_node_id,selected_goal_source,"
+             << "best_x,best_y,best_z,best_yaw,best_gain,best_dynamic_gain,best_dfm_score,"
+             << "best_static_score,best_dynamic_score,"
+             << "selected_x,selected_y,selected_z,selected_yaw\n";
+  }
+
+  int best_node_id = -1;
+  std::map<RRTNode*, int>::const_iterator best_node_id_it = node_ids.find(best_node);
+  if (best_node_id_it != node_ids.end()) {
+    best_node_id = best_node_id_it->second;
+  }
+
+  int selected_goal_node_id = -1;
+  std::map<RRTNode*, int>::const_iterator selected_goal_id_it = node_ids.find(selected_goal_node);
+  if (selected_goal_id_it != node_ids.end()) {
+    selected_goal_node_id = selected_goal_id_it->second;
+  }
+
+  std::string selected_goal_source = "none";
+  if (selected_goal_node) {
+    selected_goal_source = selected_goal_node_id >= 0 ? "rrt_tree" : "cached_branch";
+  } else if (planner_mode.find("frontier") == 0) {
+    selected_goal_source = "frontier";
+  }
+
+  goal_out << rrt_log_iteration_ << ","
+           << stamp_sec << ","
+           << planner_mode << ","
+           << (is_clear ? 1 : 0) << ","
+           << node_ids.size() << ","
+           << best_node_id << ","
+           << selected_goal_node_id << ","
+           << selected_goal_source << ",";
+
+  if (best_node) {
+    goal_out << best_node->state_[0] << ","
+             << best_node->state_[1] << ","
+             << best_node->state_[2] << ","
+             << best_node->state_[3] << ","
+             << best_node->gain_ << ","
+             << best_node->dynamic_gain_ << ","
+             << best_node->dfm_score_ << ","
+             << best_node->score(params_.lambda) << ","
+             << best_node->dynamic_score(params_.lambda, params_.zeta) << ",";
+  } else {
+    goal_out << ",,,,,,,,,";
+  }
+
+  if (selected_goal_node) {
+    goal_out << selected_goal_node->state_[0] << ","
+             << selected_goal_node->state_[1] << ","
+             << selected_goal_node->state_[2] << ","
+             << selected_goal_node->state_[3] << "\n";
+  } else {
+    goal_out << ",,,\n";
+  }
+}
+
 
 void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
 {
@@ -681,6 +897,7 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
   visualizePrediction(pred_marker_pub_, covariance_marker_pub_, trajectories, all_ellipses);
 
   RRTNode* root = initialize(trajectories, all_ellipses);
+  rrt_log_iteration_++;
 
   // Check if we have a old best branch
   if (best_branch_root_)
@@ -723,6 +940,7 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
     ROS_DEBUG_STREAM("GLOBAL PLANNING");
     result.frontiers = getFrontiers();
     result.is_clear = false;
+    logRRTTree(root, NULL, NULL, "frontier_no_valid", false);
     as_.setSucceeded(result);
     ROS_DEBUG("Deleting/Freeing!");
     delete root;
@@ -746,6 +964,7 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
     ROS_WARN("Best branch has no executable child node. Falling back to frontier planning.");
     result.frontiers = getFrontiers();
     result.is_clear = false;
+    logRRTTree(root, best_node_, NULL, "frontier_empty_branch", false);
     as_.setSucceeded(result);
     delete root;
     kd_free(kd_tree_);
@@ -753,9 +972,17 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
   }
   result.pose.pose = vecToPose(best_branch_root_->children_[0]->state_);
 
+  RRTNode* selected_goal_node = firstChildOnBranch(root, best_node_);
+  std::string planner_mode = "local_rrt";
+  bool is_clear = false;
+
   // If we find a best node
   if (best_node_->dynamic_score(params_.lambda, params_.zeta) > params_.zero_gain)
   {
+    if (!selected_goal_node && best_branch_root_ && !best_branch_root_->children_.empty()) {
+      selected_goal_node = best_branch_root_->children_[0];
+      planner_mode = "local_cached_branch";
+    }
     result.is_clear = true;
     logTreeGuidanceDecision(
         goal->header.seq,
@@ -763,6 +990,7 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
         best_branch_root_->children_[0],
         best_node_,
         "aep");
+    is_clear = true;
     ROS_DEBUG_STREAM("LOCAL PLANNING");
   }
   else
@@ -771,8 +999,15 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
     ROS_DEBUG_STREAM("GLOBAL PLANNING");
     result.frontiers = getFrontiers();
     result.is_clear = false;
+    planner_mode = "frontier_zero_gain";
+    selected_goal_node = NULL;
+    logRRTTree(root, best_node_, selected_goal_node, planner_mode, false);
     delete best_branch_root_;
     best_branch_root_ = NULL;
+  }
+
+  if (is_clear) {
+    logRRTTree(root, best_node_, selected_goal_node, planner_mode, true);
   }
 
   as_.setSucceeded(result);

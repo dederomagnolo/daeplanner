@@ -2,7 +2,15 @@
 <launch>
   <arg name="mav_name" default="iris" />
   <arg name="experiment_seed" default="-1" />
+  <arg name="rrt_log_path" default="$(optenv RRT_TREE_LOG_PATH)" />
+  <arg name="rrt_goal_log_path" default="$(optenv RRT_GOAL_LOG_PATH)" />
+  <arg name="rrt_log_enabled" default="$(optenv RRT_TREE_LOG_ENABLED false)" />
+  <arg name="rrt_log_every_n" default="$(optenv RRT_TREE_LOG_EVERY_N 1)" />
   <param name="experiment_seed" value="$(arg experiment_seed)" />
+  <param name="daep/rrt/log_path" value="$(arg rrt_log_path)" />
+  <param name="daep/rrt/goal_log_path" value="$(arg rrt_goal_log_path)" />
+  <param name="daep/rrt/log_enabled" value="$(arg rrt_log_enabled)" />
+  <param name="daep/rrt/log_every_n" value="$(arg rrt_log_every_n)" />
 
   <node pkg="tf" type="static_transform_publisher" name="hokuyo_broadcaster" args="0.02 0 0.08 0 0 0 base_link laser_link 100" />
   <node pkg="tf" type="static_transform_publisher" name="primesense_broadcaster" args="0.05 0 0.13 -1.57079633 0 -1.57079633 base_link camera_link 100" />
