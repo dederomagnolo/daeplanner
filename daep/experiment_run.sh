@@ -115,6 +115,26 @@ sync_data_into_run() {
   done
 }
 
+clean_source_data_dir() {
+  local src_base="${EXPERIMENT_SOURCE_DATA_DIR:-/home/daep/data}"
+  if [[ -z "${src_base}" || ! -d "${src_base}" ]]; then
+    echo "[finalize] source data dir not found, skip clean: ${src_base}"
+    return 0
+  fi
+
+  local removed=0
+  shopt -s nullglob
+  local files=("${src_base}"/*)
+  shopt -u nullglob
+  for p in "${files[@]}"; do
+    if [[ -f "${p}" ]]; then
+      rm -f "${p}"
+      ((removed += 1))
+    fi
+  done
+  echo "[finalize] cleaned source data folder (${removed} files removed) in ${src_base}"
+}
+
 save_octomap_now() {
   local suffix="$1"
   local octomap_topic="${EXPERIMENT_OCTOMAP_TOPIC:-/aeplanner/octomap_full}"
@@ -558,6 +578,8 @@ cmd_finalize() {
     --octomaps-dir "${EXPERIMENT_OCTOMAP_DIR}" \
     --overwrite \
     --clean-output
+
+  clean_source_data_dir
 
   if [[ ! -f "${summary_md}" ]]; then
     echo "[finalize] error: summary.md was not generated: ${summary_md}" >&2
