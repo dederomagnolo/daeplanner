@@ -59,6 +59,19 @@ if [[ -n "$seed" && "$seed" =~ ^-?[0-9]+$ ]]; then
   launch_cmd+=("experiment_seed:=$seed")
 fi
 
+rrt_log_path="${RRT_TREE_LOG_PATH:-}"
+rrt_goal_log_path="${RRT_GOAL_LOG_PATH:-}"
+rrt_log_every_n="${RRT_TREE_LOG_EVERY_N:-1}"
+if [[ -n "$rrt_log_path" ]]; then
+  mkdir -p "$(dirname "$rrt_log_path")"
+  launch_cmd+=(
+    "rrt_log_path:=$rrt_log_path"
+    "rrt_goal_log_path:=$rrt_goal_log_path"
+    "rrt_log_enabled:=true"
+    "rrt_log_every_n:=$rrt_log_every_n"
+  )
+fi
+
 save_octomap_with_seed_and_timestamp() {
   local ts seed_tag config_tag run_tag octomap_name octomap_base octomap_file octomap_dir octomap_topic
   ts="$(date +%Y%m%d_%H%M%S)"

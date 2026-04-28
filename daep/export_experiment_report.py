@@ -59,6 +59,18 @@ def copy_file(src: Path, dst_dir: Path, manifest: Dict[str, dict], key: str) -> 
     return dst
 
 
+def register_input_file(src: Path, manifest: Dict[str, dict], key: str) -> Optional[Path]:
+    if not src.exists() or (not src.is_file()):
+        return None
+    stat = src.stat()
+    manifest[key] = {
+        "source": str(src.resolve()),
+        "size_bytes": int(stat.st_size),
+        "mtime_iso": dt.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+    return src
+
+
 def load_truth(csv_path: Path) -> List[dict]:
     rows = []
     with csv_path.open("r", newline="") as f:
@@ -90,6 +102,16 @@ def _get_int(row: dict, key: str, default: int = 0) -> int:
         return int(default)
 
 
+def _get_optional_float(row: dict, key: str) -> Optional[float]:
+    value = str(row.get(key, "")).strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def load_map(csv_path: Path) -> List[dict]:
     rows = []
     with csv_path.open("r", newline="") as f:
@@ -112,6 +134,393 @@ def load_map(csv_path: Path) -> List[dict]:
             )
     rows.sort(key=lambda d: d["map_id"])
     return rows
+
+
+def load_path_goals(csv_path: Path) -> List[dict]:
+    if not csv_path.exists():
+        return []
+    goals = []
+    with csv_path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for idx, row in enumerate(reader, start=1):
+            clean = {str(k).strip(): v for k, v in row.items() if k is not None}
+            try:
+                goals.append(
+                    {
+                        "seq": idx,
+                        "x": float(str(clean.get("Goal x", "")).strip()),
+                        "y": float(str(clean.get("Goal y", "")).strip()),
+                        "z": float(str(clean.get("Goal z", "0")).strip()),
+                        "planner": str(clean.get("Planner", "")).strip(),
+                    }
+                )
+            except Exception:
+                continue
+    return goals
+
+
+def path_stats(goals: List[dict]) -> dict:
+    stats = {
+        "goal_count": len(goals),
+        "path_length_xy_m": 0.0,
+        "start": None,
+        "end": None,
+    }
+    if not goals:
+        return stats
+    stats["start"] = {"x": goals[0]["x"], "y": goals[0]["y"], "z": goals[0]["z"]}
+    stats["end"] = {"x": goals[-1]["x"], "y": goals[-1]["y"], "z": goals[-1]["z"]}
+    total = 0.0
+    for a, b in zip(goals[:-1], goals[1:]):
+        total += math.hypot(b["x"] - a["x"], b["y"] - a["y"])
+    stats["path_length_xy_m"] = total
+    return stats
+
+
+def load_rrt_log_stats(tree_log_path: Path, goal_log_path: Path) -> Optional[dict]:
+    if not tree_log_path.exists() and not goal_log_path.exists():
+        return None
+
+    stats = {
+        "tree_log_source": str(tree_log_path),
+        "goal_log_source": str(goal_log_path),
+        "tree_log_rows": 0,
+        "goal_log_rows": 0,
+        "planning_iteration_count": 0,
+        "nodes_per_iteration_mean": None,
+        "nodes_per_iteration_max": None,
+        "max_dynamic_score": None,
+        "tree_mode_counts": {},
+        "goal_mode_counts": {},
+        "selected_goal_source_counts": {},
+        "selected_goal_nodes_in_tree": 0,
+        "clear_goal_count": 0,
+        "first_stamp_sec": None,
+        "last_stamp_sec": None,
+    }
+
+    stamps = []
+    nodes_per_iteration = {}
+    max_dynamic_score = None
+
+    if tree_log_path.exists():
+        with tree_log_path.open("r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stats["tree_log_rows"] += 1
+                iteration = str(row.get("planning_iteration", "")).strip()
+                if iteration:
+                    nodes_per_iteration[iteration] = nodes_per_iteration.get(iteration, 0) + 1
+
+                mode = str(row.get("planner_mode", "")).strip() or "unknown"
+                stats["tree_mode_counts"][mode] = stats["tree_mode_counts"].get(mode, 0) + 1
+
+                if _get_int(row, "is_selected_goal", 0) == 1:
+                    stats["selected_goal_nodes_in_tree"] += 1
+
+                dynamic_score = _get_optional_float(row, "dynamic_score")
+                if dynamic_score is not None:
+                    max_dynamic_score = dynamic_score if max_dynamic_score is None else max(max_dynamic_score, dynamic_score)
+
+                stamp = _get_optional_float(row, "stamp_sec")
+                if stamp is not None:
+                    stamps.append(stamp)
+
+    if nodes_per_iteration:
+        per_iter_values = list(nodes_per_iteration.values())
+        stats["planning_iteration_count"] = len(per_iter_values)
+        stats["nodes_per_iteration_mean"] = float(st.mean(per_iter_values))
+        stats["nodes_per_iteration_max"] = int(max(per_iter_values))
+
+    stats["max_dynamic_score"] = max_dynamic_score
+
+    if goal_log_path.exists():
+        with goal_log_path.open("r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                stats["goal_log_rows"] += 1
+
+                mode = str(row.get("planner_mode", "")).strip() or "unknown"
+                stats["goal_mode_counts"][mode] = stats["goal_mode_counts"].get(mode, 0) + 1
+
+                source = str(row.get("selected_goal_source", "")).strip() or "unknown"
+                stats["selected_goal_source_counts"][source] = stats["selected_goal_source_counts"].get(source, 0) + 1
+
+                if _get_int(row, "is_clear", 0) == 1:
+                    stats["clear_goal_count"] += 1
+
+                stamp = _get_optional_float(row, "stamp_sec")
+                if stamp is not None:
+                    stamps.append(stamp)
+
+    if stamps:
+        stats["first_stamp_sec"] = float(min(stamps))
+        stats["last_stamp_sec"] = float(max(stamps))
+
+    return stats
+
+
+def load_rrt_goal_rows(goal_log_path: Path) -> List[dict]:
+    if not goal_log_path.exists():
+        return []
+
+    rows = []
+    with goal_log_path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            iteration = _get_int(row, "planning_iteration", -1)
+            if iteration < 0:
+                continue
+            rows.append(
+                {
+                    "planning_iteration": iteration,
+                    "stamp_sec": _get_optional_float(row, "stamp_sec"),
+                    "planner_mode": str(row.get("planner_mode", "")).strip() or "unknown",
+                    "selected_goal_source": str(row.get("selected_goal_source", "")).strip() or "unknown",
+                    "tree_node_count": _get_int(row, "tree_node_count", 0),
+                    "best_dynamic_score": _get_optional_float(row, "best_dynamic_score"),
+                    "best_x": _get_optional_float(row, "best_x"),
+                    "best_y": _get_optional_float(row, "best_y"),
+                    "selected_x": _get_optional_float(row, "selected_x"),
+                    "selected_y": _get_optional_float(row, "selected_y"),
+                }
+            )
+    rows.sort(key=lambda r: r["planning_iteration"])
+    return rows
+
+
+def load_rrt_tree_rows(tree_log_path: Path) -> Dict[int, List[dict]]:
+    if not tree_log_path.exists():
+        return {}
+
+    by_iteration = {}
+    with tree_log_path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            iteration = _get_int(row, "planning_iteration", -1)
+            if iteration < 0:
+                continue
+            by_iteration.setdefault(iteration, []).append(
+                {
+                    "node_id": _get_int(row, "node_id", -1),
+                    "parent_id": _get_int(row, "parent_id", -1),
+                    "depth": _get_int(row, "depth", 0),
+                    "x": _get_float(row, "x"),
+                    "y": _get_float(row, "y"),
+                    "dynamic_score": _get_optional_float(row, "dynamic_score"),
+                    "is_root": _get_int(row, "is_root", 0),
+                    "is_best_node": _get_int(row, "is_best_node", 0),
+                    "is_selected_goal": _get_int(row, "is_selected_goal", 0),
+                    "is_best_branch": _get_int(row, "is_best_branch", 0),
+                }
+            )
+    return by_iteration
+
+
+def _rrt_source_color(source: str) -> str:
+    if source == "rrt_tree":
+        return "#1f77b4"
+    if source == "cached_branch":
+        return "#ff7f0e"
+    if source == "frontier":
+        return "#d62728"
+    return "#777777"
+
+
+def write_rrt_goal_timeline_svg(path: Path, goal_rows: List[dict], title: str) -> None:
+    if not goal_rows:
+        return
+
+    width, height = 980, 420
+    left, right, top, bottom = 70, 24, 42, 58
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+
+    iterations = [r["planning_iteration"] for r in goal_rows]
+    scores = [r.get("best_dynamic_score") for r in goal_rows if r.get("best_dynamic_score") is not None]
+    min_iter, max_iter = min(iterations), max(iterations)
+    max_score = max(scores) if scores else 1.0
+    max_score = max(max_score, 1.0)
+
+    def sx(iteration: int) -> float:
+        if max_iter == min_iter:
+            return left + plot_w * 0.5
+        return left + ((float(iteration) - min_iter) / float(max_iter - min_iter)) * plot_w
+
+    def sy(score: Optional[float]) -> float:
+        value = 0.0 if score is None else float(score)
+        return top + (1.0 - (value / max_score)) * plot_h
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
+        '<rect width="100%" height="100%" fill="white" />',
+        '<text x="{}" y="26" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(left, title),
+        '<rect x="{}" y="{}" width="{}" height="{}" fill="#fafafa" stroke="#333" />'.format(left, top, plot_w, plot_h),
+    ]
+
+    for frac in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        y = top + (1.0 - frac) * plot_h
+        score = frac * max_score
+        lines.append('<line x1="{}" y1="{:.2f}" x2="{}" y2="{:.2f}" stroke="#e4e4e4" />'.format(left, y, left + plot_w, y))
+        lines.append('<text x="{}" y="{:.2f}" font-family="Arial" font-size="11" text-anchor="end">{:.0f}</text>'.format(left - 8, y + 4, score))
+
+    for frac in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        x = left + frac * plot_w
+        iteration = min_iter + frac * (max_iter - min_iter)
+        lines.append('<line x1="{:.2f}" y1="{}" x2="{:.2f}" y2="{}" stroke="#e4e4e4" />'.format(x, top, x, top + plot_h))
+        lines.append('<text x="{:.2f}" y="{}" font-family="Arial" font-size="11" text-anchor="middle">{:.0f}</text>'.format(x, top + plot_h + 18, iteration))
+
+    points = ["{:.2f},{:.2f}".format(sx(r["planning_iteration"]), sy(r.get("best_dynamic_score"))) for r in goal_rows]
+    if len(points) >= 2:
+        lines.append('<polyline fill="none" stroke="#4a4a4a" stroke-width="1.6" points="{}" />'.format(" ".join(points)))
+
+    for row in goal_rows:
+        source = row.get("selected_goal_source", "unknown")
+        x = sx(row["planning_iteration"])
+        y = sy(row.get("best_dynamic_score"))
+        radius = 4.2 if source == "rrt_tree" else 3.4
+        lines.append(
+            '<circle cx="{:.2f}" cy="{:.2f}" r="{:.1f}" fill="{}" stroke="white" stroke-width="0.9" />'.format(
+                x, y, radius, _rrt_source_color(source)
+            )
+        )
+
+    legend_y = height - 24
+    legend_x = left
+    for label, color in [("goal da RRT", "#1f77b4"), ("ramo reaproveitado", "#ff7f0e"), ("frontier", "#d62728")]:
+        lines.append('<circle cx="{}" cy="{}" r="5" fill="{}" />'.format(legend_x, legend_y, color))
+        lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">{}</text>'.format(legend_x + 10, legend_y + 4, label))
+        legend_x += 150
+
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">iteracao do planner</text>'.format(left + plot_w * 0.43, height - 6))
+    lines.append('<text x="18" y="{}" font-family="Arial" font-size="12" transform="rotate(-90 18,{})">best_dynamic_score</text>'.format(top + plot_h * 0.62, top + plot_h * 0.62))
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def _select_rrt_sample_iterations(iterations: List[int], max_samples: int = 6) -> List[int]:
+    if len(iterations) <= max_samples:
+        return list(iterations)
+    selected = []
+    for i in range(max_samples):
+        idx = int(round(i * (len(iterations) - 1) / float(max_samples - 1)))
+        value = iterations[idx]
+        if value not in selected:
+            selected.append(value)
+    return selected
+
+
+def write_rrt_tree_samples_svg(
+    path: Path,
+    tree_rows_by_iteration: Dict[int, List[dict]],
+    goal_rows: List[dict],
+    title: str,
+    x_min: float,
+    x_max: float,
+    y_min: float,
+    y_max: float,
+) -> None:
+    iterations = sorted(tree_rows_by_iteration.keys())
+    if not iterations:
+        return
+
+    selected_iterations = _select_rrt_sample_iterations(iterations, max_samples=6)
+    goal_by_iteration = {r["planning_iteration"]: r for r in goal_rows}
+
+    width, height = 1080, 720
+    cols, rows = 3, 2
+    margin_x, margin_y = 34, 56
+    gutter_x, gutter_y = 24, 42
+    cell_w = (width - 2 * margin_x - (cols - 1) * gutter_x) / cols
+    cell_h = (height - margin_y - 28 - (rows - 1) * gutter_y) / rows
+    pad = 26
+
+    def sx(x: float, cell_left: float) -> float:
+        return cell_left + pad + ((float(x) - x_min) / max(x_max - x_min, 1e-6)) * (cell_w - 2 * pad)
+
+    def sy(y: float, cell_top: float) -> float:
+        return cell_top + pad + (1.0 - ((float(y) - y_min) / max(y_max - y_min, 1e-6))) * (cell_h - 2 * pad)
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
+        '<rect width="100%" height="100%" fill="white" />',
+        '<text x="{}" y="30" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(margin_x, title),
+    ]
+
+    for sample_idx, iteration in enumerate(selected_iterations):
+        col = sample_idx % cols
+        row = sample_idx // cols
+        cell_left = margin_x + col * (cell_w + gutter_x)
+        cell_top = margin_y + row * (cell_h + gutter_y)
+        inner_left = cell_left + pad
+        inner_top = cell_top + pad
+        inner_w = cell_w - 2 * pad
+        inner_h = cell_h - 2 * pad
+
+        nodes = tree_rows_by_iteration.get(iteration, [])
+        by_id = {n["node_id"]: n for n in nodes}
+        goal = goal_by_iteration.get(iteration, {})
+
+        lines.append('<rect x="{:.2f}" y="{:.2f}" width="{:.2f}" height="{:.2f}" fill="#fbfbfb" stroke="#333" />'.format(cell_left, cell_top, cell_w, cell_h))
+        lines.append('<rect x="{:.2f}" y="{:.2f}" width="{:.2f}" height="{:.2f}" fill="white" stroke="#dddddd" />'.format(inner_left, inner_top, inner_w, inner_h))
+
+        for frac in [0.25, 0.5, 0.75]:
+            gx = inner_left + frac * inner_w
+            gy = inner_top + frac * inner_h
+            lines.append('<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="#eeeeee" />'.format(gx, inner_top, gx, inner_top + inner_h))
+            lines.append('<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="#eeeeee" />'.format(inner_left, gy, inner_left + inner_w, gy))
+
+        for node in nodes:
+            parent = by_id.get(node["parent_id"])
+            if not parent:
+                continue
+            color = "#d62728" if node.get("is_best_branch", 0) and parent.get("is_best_branch", 0) else "#b8b8b8"
+            width_px = 2.0 if color == "#d62728" else 0.9
+            lines.append(
+                '<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="{}" stroke-width="{:.1f}" opacity="0.85" />'.format(
+                    sx(parent["x"], cell_left), sy(parent["y"], cell_top),
+                    sx(node["x"], cell_left), sy(node["y"], cell_top),
+                    color, width_px,
+                )
+            )
+
+        for node in nodes:
+            fill = "#666666"
+            radius = 2.2
+            if node.get("is_root", 0):
+                fill = "#111111"
+                radius = 3.4
+            if node.get("is_best_branch", 0):
+                fill = "#d62728"
+                radius = 3.0
+            if node.get("is_best_node", 0):
+                fill = "#9467bd"
+                radius = 4.4
+            if node.get("is_selected_goal", 0):
+                fill = "#2ca02c"
+                radius = 4.8
+            lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="{:.1f}" fill="{}" opacity="0.95" />'.format(sx(node["x"], cell_left), sy(node["y"], cell_top), radius, fill))
+
+        if goal.get("selected_x") is not None and goal.get("selected_y") is not None and goal.get("selected_goal_source") == "cached_branch":
+            x = sx(goal["selected_x"], cell_left)
+            y = sy(goal["selected_y"], cell_top)
+            lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="5.2" fill="#ff7f0e" stroke="white" stroke-width="1.2" />'.format(x, y))
+
+        score = goal.get("best_dynamic_score")
+        score_text = "score=N/A" if score is None else "score={:.1f}".format(score)
+        label = "iter {} | {} | {}".format(iteration, goal.get("selected_goal_source", "unknown"), score_text)
+        lines.append('<text x="{:.2f}" y="{:.2f}" font-family="Arial" font-size="12" font-weight="bold">{}</text>'.format(cell_left + 8, cell_top + 18, label))
+        lines.append('<text x="{:.2f}" y="{:.2f}" font-family="Arial" font-size="11" fill="#555">nos={}</text>'.format(cell_left + 8, cell_top + cell_h - 8, len(nodes)))
+
+    legend_y = height - 16
+    legend_x = margin_x
+    for label, color in [("raiz", "#111111"), ("ramo melhor", "#d62728"), ("best node", "#9467bd"), ("goal RRT", "#2ca02c"), ("goal cache", "#ff7f0e")]:
+        lines.append('<circle cx="{}" cy="{}" r="5" fill="{}" />'.format(legend_x, legend_y, color))
+        lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">{}</text>'.format(legend_x + 10, legend_y + 4, label))
+        legend_x += 118
+
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
 
 
 def _pair_dist(a: dict, b: dict) -> float:
@@ -580,6 +989,113 @@ def write_temporal_summary_csv(path: Path, summary: dict) -> None:
         w.writerow(summary)
 
 
+def compute_snapshot_metrics(
+    snapshot_root: Path,
+    truth: List[dict],
+    selected_threshold_m: float,
+) -> Tuple[Optional[dict], List[dict]]:
+    if not snapshot_root.exists() or not snapshot_root.is_dir():
+        return None, []
+
+    rows = []
+    for snap_dir in sorted([p for p in snapshot_root.iterdir() if p.is_dir()], key=lambda p: p.name):
+        map_csv = snap_dir / "tree_map_final.csv"
+        if not map_csv.exists():
+            continue
+        try:
+            maps = load_map(map_csv)
+        except Exception:
+            continue
+
+        meta_json = snap_dir / "tree_map_final.json"
+        exported_at_sec = None
+        if meta_json.exists():
+            try:
+                payload = json.loads(meta_json.read_text())
+                exported_at_sec = float(payload.get("exported_at_sec"))
+            except Exception:
+                exported_at_sec = None
+        if exported_at_sec is None:
+            exported_at_sec = float(snap_dir.stat().st_mtime)
+
+        confirmed_maps = [m for m in maps if int(m.get("confirmed", 0)) == 1]
+        sorted_pairs = _sorted_pairs(truth, confirmed_maps)
+        keep, fn, fp = _one_to_one(sorted_pairs, len(truth), len(confirmed_maps), selected_threshold_m)
+        precision, recall, f1 = _prf(len(keep), len(fn), len(fp))
+        goals = load_path_goals(snap_dir / "path.csv")
+        rows.append(
+            {
+                "snapshot": snap_dir.name,
+                "exported_at_sec": exported_at_sec,
+                "total_count": len(maps),
+                "confirmed_count": len(confirmed_maps),
+                "candidate_count": max(len(maps) - len(confirmed_maps), 0),
+                "tp": len(keep),
+                "fn": len(fn),
+                "fp": len(fp),
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "goal_count": len(goals),
+                "path_length_xy_m": path_stats(goals)["path_length_xy_m"],
+            }
+        )
+
+    if not rows:
+        return None, []
+    rows.sort(key=lambda r: (r["exported_at_sec"], r["snapshot"]))
+    t0 = rows[0]["exported_at_sec"]
+    for row in rows:
+        row["time_sec"] = max(row["exported_at_sec"] - t0, 0.0)
+        row["time_min"] = _seconds_to_minutes(row["time_sec"])
+
+    best_recall = max(r["recall"] for r in rows)
+    best_f1 = max(r["f1"] for r in rows)
+    summary = {
+        "source": str(snapshot_root),
+        "snapshot_count": len(rows),
+        "duration_sec": rows[-1]["time_sec"],
+        "duration_min": rows[-1]["time_min"],
+        "final_snapshot": rows[-1]["snapshot"],
+        "final_tp": rows[-1]["tp"],
+        "final_fn": rows[-1]["fn"],
+        "final_fp": rows[-1]["fp"],
+        "final_precision": rows[-1]["precision"],
+        "final_recall": rows[-1]["recall"],
+        "final_f1": rows[-1]["f1"],
+        "best_recall": best_recall,
+        "best_f1": best_f1,
+    }
+    return summary, rows
+
+
+def write_snapshot_summary_csv(path: Path, rows: List[dict]) -> None:
+    fields = [
+        "snapshot",
+        "time_sec",
+        "time_min",
+        "total_count",
+        "confirmed_count",
+        "candidate_count",
+        "tp",
+        "fn",
+        "fp",
+        "precision",
+        "recall",
+        "f1",
+        "goal_count",
+        "path_length_xy_m",
+    ]
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for row in rows:
+            out = dict(row)
+            for key in ("time_sec", "time_min", "precision", "recall", "f1", "path_length_xy_m"):
+                out[key] = "{:.6f}".format(row[key])
+            w.writerow({k: out.get(k, "") for k in fields})
+
+
 def write_temporal_svg(path: Path, rows: List[dict], title: str) -> None:
     width = 900
     height = 460
@@ -628,6 +1144,88 @@ def write_temporal_svg(path: Path, rows: List[dict], title: str) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+def write_route_tree_svg(
+    path: Path,
+    truth: List[dict],
+    maps: List[dict],
+    goals: List[dict],
+    title: str,
+    x_min: float,
+    x_max: float,
+    y_min: float,
+    y_max: float,
+) -> None:
+    width = 900
+    height = 680
+    left = 70
+    right = 30
+    top = 55
+    bottom = 75
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+
+    def sx(x: float) -> float:
+        return left + ((float(x) - x_min) / max(x_max - x_min, 1e-6)) * plot_w
+
+    def sy(y: float) -> float:
+        return top + (1.0 - ((float(y) - y_min) / max(y_max - y_min, 1e-6))) * plot_h
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
+        '<rect width="100%" height="100%" fill="white" />',
+        '<text x="{}" y="32" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(left, title),
+        '<rect x="{0}" y="{1}" width="{2}" height="{3}" fill="#fafafa" stroke="#333" />'.format(left, top, plot_w, plot_h),
+    ]
+
+    tick_count = 5
+    for i in range(tick_count + 1):
+        fx = float(i) / float(tick_count)
+        x_val = x_min + fx * (x_max - x_min)
+        y_val = y_min + fx * (y_max - y_min)
+        x = left + fx * plot_w
+        y = top + (1.0 - fx) * plot_h
+        lines.append('<line x1="{0:.2f}" y1="{1}" x2="{0:.2f}" y2="{2}" stroke="#e5e5e5" />'.format(x, top, top + plot_h))
+        lines.append('<line x1="{0}" y1="{1:.2f}" x2="{2}" y2="{1:.2f}" stroke="#e5e5e5" />'.format(left, y, left + plot_w))
+        lines.append('<text x="{:.2f}" y="{}" font-family="Arial" font-size="11" text-anchor="middle">{:.1f}</text>'.format(x, top + plot_h + 18, x_val))
+        lines.append('<text x="{}" y="{:.2f}" font-family="Arial" font-size="11" text-anchor="end">{:.1f}</text>'.format(left - 8, y + 4, y_val))
+
+    if goals:
+        points = " ".join("{:.2f},{:.2f}".format(sx(g["x"]), sy(g["y"])) for g in goals)
+        lines.append('<polyline fill="none" stroke="#444" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="{}" />'.format(points))
+        for g in goals:
+            r = 2.0 if g["seq"] not in (1, len(goals)) else 4.0
+            lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="{:.1f}" fill="#444" opacity="0.45" />'.format(sx(g["x"]), sy(g["y"]), r))
+        lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="6" fill="#2ca02c" stroke="white" stroke-width="1.5" />'.format(sx(goals[0]["x"]), sy(goals[0]["y"])))
+        lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="6" fill="#d62728" stroke="white" stroke-width="1.5" />'.format(sx(goals[-1]["x"]), sy(goals[-1]["y"])))
+
+    for t in truth:
+        lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="7" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(sx(t["x"]), sy(t["y"])))
+        if t.get("tree_id") is not None:
+            lines.append('<text x="{:.2f}" y="{:.2f}" font-family="Arial" font-size="10" fill="#1f77b4">{}</text>'.format(sx(t["x"]) + 8, sy(t["y"]) - 8, t["tree_id"]))
+
+    for m in maps:
+        color = "#ff7f0e" if int(m.get("confirmed", 0)) == 1 else "#999999"
+        x = sx(m["x"])
+        y = sy(m["y"])
+        lines.append('<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="{}" stroke-width="2" />'.format(x - 5, y - 5, x + 5, y + 5, color))
+        lines.append('<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="{}" stroke-width="2" />'.format(x - 5, y + 5, x + 5, y - 5, color))
+
+    legend_y = height - 42
+    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#444" stroke-width="2" />'.format(left, legend_y, left + 38, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">rota de goals</text>'.format(left + 45, legend_y + 4))
+    lines.append('<circle cx="{}" cy="{}" r="6" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(left + 170, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">GT</text>'.format(left + 184, legend_y + 4))
+    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#ff7f0e" stroke-width="2" />'.format(left + 230, legend_y - 5, left + 240, legend_y + 5))
+    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#ff7f0e" stroke-width="2" />'.format(left + 230, legend_y + 5, left + 240, legend_y - 5))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">arvore detectada</text>'.format(left + 250, legend_y + 4))
+    lines.append('<circle cx="{}" cy="{}" r="5" fill="#2ca02c" />'.format(left + 390, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">inicio</text>'.format(left + 402, legend_y + 4))
+    lines.append('<circle cx="{}" cy="{}" r="5" fill="#d62728" />'.format(left + 460, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">fim</text>'.format(left + 472, legend_y + 4))
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     ns = metrics["nearest_stats"]
     se = metrics["selected_eval"]
@@ -643,6 +1241,16 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         if v is None:
             return "-"
         return "{:.2f} min".format(v)
+
+    def _fmt_num(v: Optional[float], decimals: int = 2) -> str:
+        if v is None:
+            return "N/A"
+        return ("{:.%df}" % decimals).format(v)
+
+    def _fmt_counts(d: dict) -> str:
+        if not d:
+            return "N/A"
+        return ", ".join("{}={}".format(k, d[k]) for k in sorted(d.keys()))
 
     def _append_map_stats(lines_out: List[str], title: str, s: dict) -> None:
         lines_out.append("### {}".format(title))
@@ -739,6 +1347,48 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         lines.append("## Descoberta ao Longo do Tempo")
         lines.append("- Sem tree_map_history.csv nesta run; gere uma nova run com o stack atualizado para obter curvas temporais.")
         lines.append("")
+    ss = metrics.get("snapshot_eval")
+    if ss:
+        lines.append("## Snapshots Salvos")
+        lines.append("- Snapshots avaliados: {}".format(ss.get("snapshot_count", 0)))
+        lines.append("- Duracao coberta: {}".format(_fmt_min(ss.get("duration_min"))))
+        lines.append("- Ultimo snapshot: {}".format(ss.get("final_snapshot", "")))
+        lines.append(
+            "- Ultimo TP/FN/FP: {}/{}/{}".format(
+                ss.get("final_tp", 0),
+                ss.get("final_fn", 0),
+                ss.get("final_fp", 0),
+            )
+        )
+        lines.append(
+            "- Ultimo precision/recall/F1: {:.3f}/{:.3f}/{:.3f}".format(
+                ss.get("final_precision", 0.0),
+                ss.get("final_recall", 0.0),
+                ss.get("final_f1", 0.0),
+            )
+        )
+        lines.append("- Melhor recall nos snapshots: {:.3f}".format(ss.get("best_recall", 0.0)))
+        lines.append("")
+    ps = metrics.get("path_stats")
+    if ps:
+        lines.append("## Rota Gerada")
+        lines.append("- Goals no path.csv: {}".format(ps.get("goal_count", 0)))
+        lines.append("- Comprimento XY aproximado entre goals: {:.3f} m".format(ps.get("path_length_xy_m", 0.0)))
+        lines.append("- Grafico: route_trees_ground_truth.svg")
+        lines.append("")
+    rs = metrics.get("rrt_stats")
+    if rs:
+        lines.append("## RRT do Planner")
+        lines.append("- Iteracoes com arvore: {}".format(rs.get("planning_iteration_count", 0)))
+        lines.append("- Linhas de nos: {}".format(rs.get("tree_log_rows", 0)))
+        lines.append("- Nos por iteracao media/max: {} / {}".format(_fmt_num(rs.get("nodes_per_iteration_mean")), rs.get("nodes_per_iteration_max", "N/A")))
+        lines.append("- Max dynamic_score observado: {}".format(_fmt_num(rs.get("max_dynamic_score"), decimals=3)))
+        lines.append("- Decisoes por modo: {}".format(_fmt_counts(rs.get("goal_mode_counts", {}))))
+        lines.append("- Origem do goal escolhido: {}".format(_fmt_counts(rs.get("selected_goal_source_counts", {}))))
+        lines.append("- Fonte: data/rrt_tree_log.csv e data/rrt_goal_log.csv")
+        if metrics.get("rrt_visualizations"):
+            lines.append("- Graficos: {}".format(", ".join(metrics.get("rrt_visualizations", []))))
+        lines.append("")
     lines.append("## Qualidade do Mapa (diametro)")
     if ms_views:
         _append_map_stats(lines, "all_map", ms_views.get("all_map", {}))
@@ -760,6 +1410,14 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         lines.append("- tree_discovery_timeseries.csv")
         lines.append("- tree_discovery_summary.csv")
         lines.append("- tree_discovery_curves.svg")
+    if ss:
+        lines.append("- snapshot_discovery_summary.csv")
+    if ps:
+        lines.append("- route_trees_ground_truth.svg")
+    if metrics.get("rrt_stats"):
+        lines.append("- rrt_tree_log.csv e rrt_goal_log.csv (insumos em data/)")
+        for rrt_viz in metrics.get("rrt_visualizations", []):
+            lines.append("- {}".format(rrt_viz))
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -795,7 +1453,23 @@ def matched_png_for_pkl(pkl_path: Path) -> Optional[Path]:
     return None
 
 
+def clean_stale_input_copies(exp_dir: Path, input_names: Sequence[str]) -> None:
+    for name in input_names:
+        candidate = exp_dir / name
+        if candidate.exists() and candidate.is_file():
+            candidate.unlink()
+    for pattern in ("octomap_*.bt", "tree_cluster_state_*.pkl", "tree_cluster_state_*.png"):
+        for candidate in exp_dir.glob(pattern):
+            if candidate.is_file():
+                candidate.unlink()
+
+
 def main() -> int:
+    raw_argv = sys.argv[1:]
+
+    def _has_cli_option(option: str) -> bool:
+        return any(arg == option or arg.startswith(option + "=") for arg in raw_argv)
+
     script_dir = Path(__file__).resolve().parent
     host_data_dir = Path("/home/daep/data")
     host_snapshots_dir = Path("/home/daep/tree_snapshots")
@@ -828,6 +1502,7 @@ def main() -> int:
     parser.add_argument("--base-dir", default=str(default_base_out), help="Base output directory for experiment folders.")
     parser.add_argument("--data-dir", default=str(default_data_dir), help="Directory containing tree_map_final and logs.")
     parser.add_argument("--snapshots-dir", default=str(default_snapshots_dir), help="Directory containing PKL snapshots.")
+    parser.add_argument("--runtime-snapshots-dir", default="", help="Directory containing manual/autosnapshot folders.")
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
     parser.add_argument("--world", default=str(default_world), help="Path to Gazebo .world file.")
     parser.add_argument("--uri-filter", default="world_jean_tree", help="URI filter used for GT extraction.")
@@ -853,10 +1528,40 @@ def main() -> int:
         help="Optional plot_pickle_svg.py path for PKL SVG plots.",
     )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite folder if it already exists.")
+    parser.add_argument("--copy-inputs", action="store_true", help="Also copy raw input files into the result folder.")
+    parser.add_argument("--clean-output", action="store_true", help="Remove stale copied inputs from the result folder before writing.")
     args = parser.parse_args()
 
     exp_name = args.name.strip() if args.name.strip() else "exp_{}".format(dt.datetime.now().strftime("%Y%m%d_%H%M%S"))
     base_dir = Path(args.base_dir).expanduser().resolve()
+    data_dir = Path(args.data_dir).expanduser().resolve()
+    snapshots_dir = Path(args.snapshots_dir).expanduser().resolve()
+    runtime_snapshots_dir = Path(args.runtime_snapshots_dir).expanduser().resolve() if args.runtime_snapshots_dir.strip() else data_dir.parent / "snapshots"
+    octomaps_dir = Path(args.octomaps_dir).expanduser().resolve()
+
+    detected_run_dir = None
+    run_candidate = base_dir / exp_name
+    legacy_run_candidate = base_dir / "runs" / exp_name
+    explicit_input_dirs = any(
+        _has_cli_option(opt)
+        for opt in ("--data-dir", "--snapshots-dir", "--runtime-snapshots-dir", "--octomaps-dir")
+    )
+    if args.name.strip() and (not explicit_input_dirs):
+        if (run_candidate / "data" / "tree_map_final.csv").exists():
+            detected_run_dir = run_candidate.resolve()
+        elif (legacy_run_candidate / "data" / "tree_map_final.csv").exists():
+            detected_run_dir = legacy_run_candidate.resolve()
+
+    if detected_run_dir:
+        base_dir = detected_run_dir
+        exp_name = "result"
+        data_dir = detected_run_dir / "data"
+        snapshots_dir = detected_run_dir / "tree_snapshots"
+        runtime_snapshots_dir = detected_run_dir / "snapshots"
+        octomaps_dir = detected_run_dir / "octomaps"
+        if not args.copy_inputs:
+            args.clean_output = True
+
     exp_dir = base_dir / exp_name
 
     if exp_dir.exists() and (not args.overwrite):
@@ -864,9 +1569,6 @@ def main() -> int:
         return 2
     exp_dir.mkdir(parents=True, exist_ok=True)
 
-    data_dir = Path(args.data_dir).expanduser().resolve()
-    snapshots_dir = Path(args.snapshots_dir).expanduser().resolve()
-    octomaps_dir = Path(args.octomaps_dir).expanduser().resolve()
     world_path = Path(args.world).expanduser().resolve()
     ti_scripts_dir = Path(args.tree_identifier_scripts_dir).expanduser().resolve()
     pkl_svg_plotter = Path(args.pkl_svg_plotter).expanduser().resolve()
@@ -874,7 +1576,15 @@ def main() -> int:
     manifest = {
         "experiment_name": exp_name,
         "generated_at_iso": dt.datetime.now().isoformat(),
+        "copy_inputs": bool(args.copy_inputs),
+        "detected_run_dir": str(detected_run_dir) if detected_run_dir else "",
         "inputs": {},
+        "input_dirs": {
+            "data_dir": str(data_dir),
+            "tree_snapshots_dir": str(snapshots_dir),
+            "runtime_snapshots_dir": str(runtime_snapshots_dir),
+            "octomaps_dir": str(octomaps_dir),
+        },
         "generated_files": {},
         "warnings": [],
     }
@@ -889,11 +1599,16 @@ def main() -> int:
         "logfile.csv",
         "intervals.csv",
         "collision.csv",
+        "rrt_tree_log.csv",
+        "rrt_goal_log.csv",
     ]
+    if args.clean_output and (not args.copy_inputs):
+        clean_stale_input_copies(exp_dir, required_data_files)
+
     for name in required_data_files:
         src = data_dir / name
-        copied = copy_file(src, exp_dir, manifest["inputs"], key=name)
-        if copied is None and name in ("tree_map_final.csv", "tree_map_final.json"):
+        registered = copy_file(src, exp_dir, manifest["inputs"], key=name) if args.copy_inputs else register_input_file(src, manifest["inputs"], key=name)
+        if registered is None and name in ("tree_map_final.csv", "tree_map_final.json"):
             print("Missing required file: {}".format(src), file=sys.stderr)
             return 1
 
@@ -902,19 +1617,31 @@ def main() -> int:
     latest_bt = latest_file(octomaps_dir, "*.bt")
 
     if latest_pkl:
-        copy_file(latest_pkl, exp_dir, manifest["inputs"], key="latest_snapshot_pkl")
+        if args.copy_inputs:
+            copy_file(latest_pkl, exp_dir, manifest["inputs"], key="latest_snapshot_pkl")
+        else:
+            register_input_file(latest_pkl, manifest["inputs"], key="latest_snapshot_pkl")
     else:
         manifest["warnings"].append("No PKL found in snapshots dir.")
     if latest_pkl:
         matched_png = matched_png_for_pkl(latest_pkl)
         if matched_png:
-            copy_file(matched_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
+            if args.copy_inputs:
+                copy_file(matched_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
+            else:
+                register_input_file(matched_png, manifest["inputs"], key="latest_snapshot_png")
         else:
             manifest["warnings"].append("No PNG found matching latest PKL snapshot name.")
     elif latest_png:
-        copy_file(latest_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
+        if args.copy_inputs:
+            copy_file(latest_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
+        else:
+            register_input_file(latest_png, manifest["inputs"], key="latest_snapshot_png")
     if latest_bt:
-        copy_file(latest_bt, exp_dir, manifest["inputs"], key="latest_octomap_bt")
+        if args.copy_inputs:
+            copy_file(latest_bt, exp_dir, manifest["inputs"], key="latest_octomap_bt")
+        else:
+            register_input_file(latest_bt, manifest["inputs"], key="latest_octomap_bt")
     else:
         manifest["warnings"].append("No .bt found in octomaps dir.")
 
@@ -927,6 +1654,12 @@ def main() -> int:
     gt_script = ti_scripts_dir / "world_tree_ground_truth_plotter.py"
     cmp_script = ti_scripts_dir / "world_tree_compare_plotter.py"
     map_script = ti_scripts_dir / "tree_map_csv_plotter.py"
+    map_csv_path = (exp_dir / "tree_map_final.csv") if args.copy_inputs else (data_dir / "tree_map_final.csv")
+    history_csv_path = (exp_dir / "tree_map_history.csv") if args.copy_inputs else (data_dir / "tree_map_history.csv")
+    path_csv_path = (exp_dir / "path.csv") if args.copy_inputs else (data_dir / "path.csv")
+    rrt_tree_log_path = (exp_dir / "rrt_tree_log.csv") if args.copy_inputs else (data_dir / "rrt_tree_log.csv")
+    rrt_goal_log_path = (exp_dir / "rrt_goal_log.csv") if args.copy_inputs else (data_dir / "rrt_goal_log.csv")
+    pkl_input_path = (exp_dir / latest_pkl.name) if (args.copy_inputs and latest_pkl) else latest_pkl
 
     if not gt_script.exists() or not cmp_script.exists() or not map_script.exists():
         print("Missing one or more required scripts in {}".format(ti_scripts_dir), file=sys.stderr)
@@ -964,7 +1697,7 @@ def main() -> int:
             "--truth-csv",
             str(gt_csv),
             "--map-csv",
-            str(exp_dir / "tree_map_final.csv"),
+            str(map_csv_path),
             "--svg-out",
             str(cmp_svg),
             "--title",
@@ -985,7 +1718,7 @@ def main() -> int:
             "python3",
             str(map_script),
             "--csv",
-            str(exp_dir / "tree_map_final.csv"),
+            str(map_csv_path),
             "--out",
             str(map_svg),
             "--label",
@@ -997,7 +1730,7 @@ def main() -> int:
             "python3",
             str(map_script),
             "--csv",
-            str(exp_dir / "tree_map_final.csv"),
+            str(map_csv_path),
             "--out",
             str(map_diameter_svg),
             "--label",
@@ -1014,7 +1747,7 @@ def main() -> int:
                 [
                     "python3",
                     str(pkl_svg_plotter),
-                    str(exp_dir / latest_pkl.name),
+                    str(pkl_input_path),
                     "--output-prefix",
                     str(exp_dir / "tree_cluster_state"),
                 ]
@@ -1030,12 +1763,12 @@ def main() -> int:
 
     pkl_error = None
     if latest_pkl and has_numpy:
-        pkl_error = try_extract_pkl_meta(exp_dir / latest_pkl.name, exp_dir / "pkl_meta.json")
+        pkl_error = try_extract_pkl_meta(pkl_input_path, exp_dir / "pkl_meta.json")
         if pkl_error:
             manifest["warnings"].append("PKL meta extraction failed: {}".format(pkl_error))
 
     truth_rows = load_truth(gt_csv)
-    map_rows = load_map(exp_dir / "tree_map_final.csv")
+    map_rows = load_map(map_csv_path)
     metrics, matching_rows = compute_metrics(
         truth_rows,
         map_rows,
@@ -1045,10 +1778,9 @@ def main() -> int:
     metrics["experiment_name"] = exp_name
 
     temporal_paths = []
-    history_csv = exp_dir / "tree_map_history.csv"
-    if history_csv.exists():
+    if history_csv_path.exists():
         try:
-            snapshots = load_map_history(history_csv)
+            snapshots = load_map_history(history_csv_path)
             temporal_summary, temporal_rows = compute_temporal_discovery(
                 truth_rows,
                 snapshots,
@@ -1068,6 +1800,76 @@ def main() -> int:
     else:
         manifest["warnings"].append("No tree_map_history.csv found; skipped temporal discovery analysis.")
 
+    snapshot_paths = []
+    snapshot_summary, snapshot_rows = compute_snapshot_metrics(
+        runtime_snapshots_dir,
+        truth_rows,
+        selected_threshold_m=args.match_threshold,
+    )
+    if snapshot_summary and snapshot_rows:
+        metrics["snapshot_eval"] = snapshot_summary
+        snapshot_summary_path = exp_dir / "snapshot_discovery_summary.csv"
+        write_snapshot_summary_csv(snapshot_summary_path, snapshot_rows)
+        snapshot_paths = [snapshot_summary_path]
+    else:
+        manifest["warnings"].append("No runtime snapshots with tree_map_final.csv found; skipped snapshot summary.")
+
+    route_paths = []
+    goals = load_path_goals(path_csv_path)
+    route_stats = path_stats(goals)
+    metrics["path_stats"] = route_stats
+    if goals:
+        route_svg = exp_dir / "route_trees_ground_truth.svg"
+        write_route_tree_svg(
+            route_svg,
+            truth_rows,
+            map_rows,
+            goals,
+            "{}: route, detections and ground truth".format(exp_name),
+            args.x_min,
+            args.x_max,
+            args.y_min,
+            args.y_max,
+        )
+        route_paths = [route_svg]
+    else:
+        manifest["warnings"].append("No path.csv goals found; skipped route plot.")
+
+    rrt_stats = load_rrt_log_stats(rrt_tree_log_path, rrt_goal_log_path)
+    rrt_paths = []
+    if rrt_stats:
+        metrics["rrt_stats"] = rrt_stats
+        rrt_goal_rows = load_rrt_goal_rows(rrt_goal_log_path)
+        rrt_tree_rows = load_rrt_tree_rows(rrt_tree_log_path)
+
+        if rrt_goal_rows:
+            rrt_timeline_svg = exp_dir / "rrt_goal_timeline.svg"
+            write_rrt_goal_timeline_svg(
+                rrt_timeline_svg,
+                rrt_goal_rows,
+                "{}: RRT decisions over planner iterations".format(exp_name),
+            )
+            rrt_paths.append(rrt_timeline_svg)
+
+        if rrt_tree_rows:
+            rrt_samples_svg = exp_dir / "rrt_tree_samples.svg"
+            write_rrt_tree_samples_svg(
+                rrt_samples_svg,
+                rrt_tree_rows,
+                rrt_goal_rows,
+                "{}: sampled RRT trees".format(exp_name),
+                args.x_min,
+                args.x_max,
+                args.y_min,
+                args.y_max,
+            )
+            rrt_paths.append(rrt_samples_svg)
+
+        if rrt_paths:
+            metrics["rrt_visualizations"] = [p.name for p in rrt_paths]
+    else:
+        manifest["warnings"].append("No RRT logs found; skipped RRT planning analysis.")
+
     metrics_path = exp_dir / "metrics.json"
     matching_path = exp_dir / "matching.csv"
     summary_path = exp_dir / "summary.md"
@@ -1085,7 +1887,7 @@ def main() -> int:
         metrics_path,
         matching_path,
         summary_path,
-    ) + tuple(temporal_paths):
+    ) + tuple(temporal_paths) + tuple(snapshot_paths) + tuple(route_paths) + tuple(rrt_paths):
         if generated.exists():
             manifest["generated_files"][generated.name] = str(generated.resolve())
 

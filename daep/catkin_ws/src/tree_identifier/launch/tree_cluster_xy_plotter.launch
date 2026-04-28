@@ -28,7 +28,8 @@
   <arg name="max_labels" default="90" />
   <arg name="log_throttle_sec" default="2.0" />
   <arg name="accumulate_history" default="true" />
-  <arg name="plot_history" default="true" />
+  <arg name="plot_history" default="false" />
+  <arg name="snapshot_history" default="true" />
   <arg name="max_history_points" default="250000" />
   <arg name="history_label_stride" default="1000" />
 
@@ -70,6 +71,7 @@
     <param name="log_throttle_sec" value="$(arg log_throttle_sec)" />
     <param name="accumulate_history" value="$(arg accumulate_history)" />
     <param name="plot_history" value="$(arg plot_history)" />
+    <param name="snapshot_history" value="$(arg snapshot_history)" />
     <param name="max_history_points" value="$(arg max_history_points)" />
     <param name="history_label_stride" value="$(arg history_label_stride)" />
 

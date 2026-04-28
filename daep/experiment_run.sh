@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_BASE_DIR="/home/daep/experimentos/runs"
+DEFAULT_BASE_DIR="/home/daep/experimentos"
+LEGACY_BASE_DIR="/home/daep/experimentos/runs"
 DEFAULT_CONTEXT_FILE="/tmp/daeplanner_current_run.env"
 
 print_usage() {
@@ -82,6 +83,9 @@ write_context_file() {
     printf 'TREE_MAP_JSON_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.json"
     printf 'TREE_MAP_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_history.csv"
     printf 'TREE_DETECTION_HISTORY_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_detection_history.csv"
+    printf 'RRT_TREE_LOG_PATH=%q\n' "${EXPERIMENT_DATA_DIR}/rrt_tree_log.csv"
+    printf 'RRT_GOAL_LOG_PATH=%q\n' "${EXPERIMENT_DATA_DIR}/rrt_goal_log.csv"
+    printf 'RRT_TREE_LOG_EVERY_N=%q\n' "1"
   } > "${ctx_path}"
 }
 
@@ -96,6 +100,8 @@ sync_data_into_run() {
     logfile.csv
     intervals.csv
     collision.csv
+    rrt_tree_log.csv
+    rrt_goal_log.csv
   )
   mkdir -p "${EXPERIMENT_DATA_DIR}"
   local src_base="${EXPERIMENT_SOURCE_DATA_DIR:-/home/daep/data}"
@@ -277,6 +283,9 @@ cmd_use() {
       exit 1
     fi
     run_dir="${base_dir}/${run_id}"
+    if [[ ! -d "${run_dir}" && "${base_dir}" == "${DEFAULT_BASE_DIR}" && -d "${LEGACY_BASE_DIR}/${run_id}" ]]; then
+      run_dir="${LEGACY_BASE_DIR}/${run_id}"
+    fi
   fi
 
   if [[ ! -d "${run_dir}" ]]; then
@@ -307,6 +316,8 @@ cmd_status() {
   echo "snapshot_dir=${EXPERIMENT_SNAPSHOT_DIR}"
   echo "octomap_dir=${EXPERIMENT_OCTOMAP_DIR}"
   echo "result_dir=${EXPERIMENT_RESULT_DIR}"
+  echo "rrt_tree_log=${RRT_TREE_LOG_PATH:-${EXPERIMENT_DATA_DIR}/rrt_tree_log.csv}"
+  echo "rrt_goal_log=${RRT_GOAL_LOG_PATH:-${EXPERIMENT_DATA_DIR}/rrt_goal_log.csv}"
   if [[ -f "${EXPERIMENT_DATA_DIR}/tree_map_final.csv" ]]; then
     local n
     n="$(awk 'NR > 1 && NF > 0 {c++} END {print c + 0}' "${EXPERIMENT_DATA_DIR}/tree_map_final.csv")"
@@ -541,8 +552,10 @@ cmd_finalize() {
     --base-dir "${EXPERIMENT_RUN_DIR}" \
     --data-dir "${EXPERIMENT_DATA_DIR}" \
     --snapshots-dir "${EXPERIMENT_SNAPSHOT_DIR}" \
+    --runtime-snapshots-dir "${EXPERIMENT_RUN_DIR}/snapshots" \
     --octomaps-dir "${EXPERIMENT_OCTOMAP_DIR}" \
-    --overwrite
+    --overwrite \
+    --clean-output
 
   if [[ ! -f "${summary_md}" ]]; then
     echo "[finalize] error: summary.md was not generated: ${summary_md}" >&2

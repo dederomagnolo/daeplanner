@@ -99,7 +99,8 @@
   <arg name="cluster_plotter_show_tree_labels" default="true" />
   <arg name="cluster_plotter_show_map_labels" default="true" />
   <arg name="cluster_plotter_accumulate_history" default="true" />
-  <arg name="cluster_plotter_plot_history" default="true" />
+  <arg name="cluster_plotter_plot_history" default="false" />
+  <arg name="cluster_plotter_snapshot_history" default="true" />
   <arg name="cluster_plotter_max_history_points" default="250000" />
   <arg name="cluster_plotter_history_label_stride" default="1000" />
 
@@ -247,6 +248,7 @@
     <arg name="log_throttle_sec" value="$(arg log_throttle_sec)" />
     <arg name="accumulate_history" value="$(arg cluster_plotter_accumulate_history)" />
     <arg name="plot_history" value="$(arg cluster_plotter_plot_history)" />
+    <arg name="snapshot_history" value="$(arg cluster_plotter_snapshot_history)" />
     <arg name="max_history_points" value="$(arg cluster_plotter_max_history_points)" />
     <arg name="history_label_stride" value="$(arg cluster_plotter_history_label_stride)" />
     <arg name="snapshot_dir" value="$(arg cluster_plotter_snapshot_dir)" />

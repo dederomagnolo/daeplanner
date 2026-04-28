@@ -43,7 +43,11 @@
 #include <tf2/convert.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <map>
+#include <set>
+#include <string>
 #include <tuple>
 #include <pigain/QueryDFM.h>
 #include <pigain/Score.h>
@@ -70,6 +74,7 @@ private:
   // Keep track of the best node and its score
   RRTNode* best_node_;
   RRTNode* best_branch_root_;
+  int rrt_log_iteration_;
 
   std::shared_ptr<octomap::OcTree> ot_;
 
@@ -158,6 +163,19 @@ private:
   void publishEvaluatedNodesRecursive(RRTNode* node);
 
   geometry_msgs::Pose vecToPose(Eigen::Vector4d state);
+
+  void logRRTTree(RRTNode* root, RRTNode* best_node, RRTNode* selected_goal_node, const std::string& planner_mode, bool is_clear);
+  void assignRRTNodeIdsRecursive(RRTNode* node, std::map<RRTNode*, int>& node_ids, int& next_id);
+  void writeRRTNodeLogRecursive(std::ofstream& out,
+                                RRTNode* node,
+                                const std::map<RRTNode*, int>& node_ids,
+                                const std::set<RRTNode*>& best_branch,
+                                RRTNode* best_node,
+                                RRTNode* selected_goal_node,
+                                const std::string& planner_mode,
+                                double stamp_sec,
+                                int depth);
+  RRTNode* firstChildOnBranch(RRTNode* root, RRTNode* node);
 
   float CylTest_CapsFirst(const octomap::point3d& pt1, const octomap::point3d& pt2,
                           float lsq, float rsq, const octomap::point3d& pt);

@@ -6,10 +6,10 @@
 ```
 
 Isso cria:
-`/home/daep/experimentos/runs/<run_id>/`
+`/home/daep/experimentos/<run_id>/`
 
 Subpastas principais:
-- `data/` (tree_map e CSVs do planner)
+- `data/` (tree_map, historicos, RRT e CSVs do planner)
 - `tree_snapshots/` (PKL/PNG do plotter de cluster)
 - `snapshots/` (snapshots manuais por tag/timestamp)
 - `octomaps/`
@@ -26,7 +26,7 @@ O contexto ativo da run fica em:
 ./daep/run_tree_stack_realtime.sh /camera/depth/points world
 ```
 
-Com o contexto ativo, os outputs vão automaticamente para a pasta da run.
+Com o contexto ativo, os outputs vao automaticamente para a pasta da run, incluindo `data/rrt_tree_log.csv` e `data/rrt_goal_log.csv`.
 
 ### 3) Snapshot manual a qualquer momento
 ```bash
