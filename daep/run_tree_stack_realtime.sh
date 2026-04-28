@@ -22,6 +22,7 @@ target_frame="${2:-world}"
 run_plotter="${RUN_PLOTTER:-true}"
 run_cluster_plotter="${RUN_CLUSTER_PLOTTER:-true}"
 run_fuser="${RUN_FUSER:-true}"
+detector_require_sklearn="${DETECTOR_REQUIRE_SKLEARN:-true}"
 
 cd
 source .bashrc
@@ -45,6 +46,7 @@ echo "[tree_stack] csv_out=${csv_out}"
 echo "[tree_stack] json_out=${json_out}"
 echo "[tree_stack] snapshot_dir=${snapshot_dir}"
 echo "[tree_stack] experiment_seed=${experiment_seed}"
+echo "[tree_stack] detector_require_sklearn=${detector_require_sklearn}"
 if [[ -n "${run_id}" ]]; then
   echo "[tree_stack] run_id=${run_id}"
 fi
@@ -58,6 +60,7 @@ roslaunch tree_identifier tree_stack.launch \
   tracker_use_array_input:=true \
   fuser_use_array_input:=true \
   detector_clustering_mode:=dbscan_gmm \
+  detector_require_sklearn:="${detector_require_sklearn}" \
   experiment_seed:="${experiment_seed}" \
   fuser_csv_output_path:="${csv_out}" \
   fuser_json_output_path:="${json_out}" \

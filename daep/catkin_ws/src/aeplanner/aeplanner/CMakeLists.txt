@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   kdtree
   pigain
   dynamic_reconfigure
+  tree_identifier
 )
 find_package(cmake_modules REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -48,7 +49,7 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS include ${Eigen_INCLUDE_DIRS} ${OCTOMAP_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS}
   LIBRARIES aeplanner ${catkin_LIBRARIES} ${OCTOMAP_LIBRARIES}
-  CATKIN_DEPENDS message_runtime roscpp geometry_msgs visualization_msgs tf kdtree 
+  CATKIN_DEPENDS message_runtime roscpp geometry_msgs visualization_msgs tf kdtree tree_identifier
 )
 
 include_directories(

@@ -207,6 +207,77 @@ namespace aeplanner
         ROS_WARN_STREAM("No look_ahead_horizon specified. Default: " << params.look_ahead_horizon);
     }
 
+    // Tree-guided exploration objective
+    params.tree_guidance_enabled = false;
+    if (!ros::param::get(ns + "/tree_guidance/enabled", params.tree_guidance_enabled)) {
+      ROS_WARN_STREAM("No tree_guidance/enabled specified. Default: " << params.tree_guidance_enabled);
+    }
+
+    params.tree_confirmed_topic = "/tree_map_full";
+    if (!ros::param::get(ns + "/tree_guidance/confirmed_topic", params.tree_confirmed_topic)) {
+      ROS_WARN_STREAM("No tree_guidance/confirmed_topic specified. Default: " << params.tree_confirmed_topic);
+    }
+
+    params.tree_candidate_topic = "/tree_map_candidate_full";
+    if (!ros::param::get(ns + "/tree_guidance/candidate_topic", params.tree_candidate_topic)) {
+      ROS_WARN_STREAM("No tree_guidance/candidate_topic specified. Default: " << params.tree_candidate_topic);
+    }
+
+    params.tree_gain_weight = 1.0;
+    if (!ros::param::get(ns + "/tree_guidance/gain_weight", params.tree_gain_weight)) {
+      ROS_WARN_STREAM("No tree_guidance/gain_weight specified. Default: " << params.tree_gain_weight);
+    }
+
+    params.tree_candidate_bonus = 1.25;
+    if (!ros::param::get(ns + "/tree_guidance/candidate_bonus", params.tree_candidate_bonus)) {
+      ROS_WARN_STREAM("No tree_guidance/candidate_bonus specified. Default: " << params.tree_candidate_bonus);
+    }
+
+    params.tree_uncertainty_conf_weight = 0.45;
+    if (!ros::param::get(ns + "/tree_guidance/uncertainty_conf_weight", params.tree_uncertainty_conf_weight)) {
+      ROS_WARN_STREAM("No tree_guidance/uncertainty_conf_weight specified. Default: " << params.tree_uncertainty_conf_weight);
+    }
+
+    params.tree_uncertainty_fit_weight = 0.35;
+    if (!ros::param::get(ns + "/tree_guidance/uncertainty_fit_weight", params.tree_uncertainty_fit_weight)) {
+      ROS_WARN_STREAM("No tree_guidance/uncertainty_fit_weight specified. Default: " << params.tree_uncertainty_fit_weight);
+    }
+
+    params.tree_uncertainty_age_weight = 0.20;
+    if (!ros::param::get(ns + "/tree_guidance/uncertainty_age_weight", params.tree_uncertainty_age_weight)) {
+      ROS_WARN_STREAM("No tree_guidance/uncertainty_age_weight specified. Default: " << params.tree_uncertainty_age_weight);
+    }
+
+    params.tree_age_tau_sec = 120.0;
+    if (!ros::param::get(ns + "/tree_guidance/age_tau_sec", params.tree_age_tau_sec)) {
+      ROS_WARN_STREAM("No tree_guidance/age_tau_sec specified. Default: " << params.tree_age_tau_sec);
+    }
+
+    params.tree_view_min_range = 0.8;
+    if (!ros::param::get(ns + "/tree_guidance/view_min_range", params.tree_view_min_range)) {
+      ROS_WARN_STREAM("No tree_guidance/view_min_range specified. Default: " << params.tree_view_min_range);
+    }
+
+    params.tree_view_max_range = 4.5;
+    if (!ros::param::get(ns + "/tree_guidance/view_max_range", params.tree_view_max_range)) {
+      ROS_WARN_STREAM("No tree_guidance/view_max_range specified. Default: " << params.tree_view_max_range);
+    }
+
+    params.tree_preferred_range = 2.4;
+    if (!ros::param::get(ns + "/tree_guidance/preferred_range", params.tree_preferred_range)) {
+      ROS_WARN_STREAM("No tree_guidance/preferred_range specified. Default: " << params.tree_preferred_range);
+    }
+
+    params.tree_range_sigma = 1.1;
+    if (!ros::param::get(ns + "/tree_guidance/range_sigma", params.tree_range_sigma)) {
+      ROS_WARN_STREAM("No tree_guidance/range_sigma specified. Default: " << params.tree_range_sigma);
+    }
+
+    params.tree_fit_error_norm = 0.35;
+    if (!ros::param::get(ns + "/tree_guidance/fit_error_norm", params.tree_fit_error_norm)) {
+      ROS_WARN_STREAM("No tree_guidance/fit_error_norm specified. Default: " << params.tree_fit_error_norm);
+    }
+
     return params;
   }
 }

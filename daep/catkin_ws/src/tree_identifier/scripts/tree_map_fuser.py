@@ -48,6 +48,7 @@ class TreeMapFuser(object):
         self.id_reuse_max_dist = rospy.get_param("~id_reuse_max_dist", 0.95)
         self.max_diameter_delta = rospy.get_param("~max_diameter_delta", 0.45)
         self.diameter_assoc_weight = rospy.get_param("~diameter_assoc_weight", 0.35)
+        self.min_assignment_margin = rospy.get_param("~min_assignment_margin", 0.0)
 
         self.min_confirmations = rospy.get_param("~min_confirmations", 4)
         self.max_std_xy = rospy.get_param("~max_std_xy", 0.70)
@@ -369,6 +370,10 @@ class TreeMapFuser(object):
                     continue
                 if cost[det_idx][col] >= invalid_cost * 0.5:
                     continue
+                if self.min_assignment_margin > 0.0:
+                    valid_row = sorted([c for c in cost[det_idx] if c < invalid_cost * 0.5])
+                    if len(valid_row) >= 2 and (valid_row[1] - valid_row[0]) < self.min_assignment_margin:
+                        continue
                 det_to_map[det_idx] = map_ids[col]
 
         return det_to_map

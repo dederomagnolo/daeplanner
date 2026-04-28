@@ -1,6 +1,9 @@
 #ifndef READ_PARAMS_H
 #define READ_PARAMS_H
 
+#include <string>
+#include <vector>
+
 namespace aeplanner
 {
   struct Params
@@ -63,6 +66,22 @@ namespace aeplanner
     double global_planner_counter;
 
     int look_ahead_horizon;
+
+    // Tree-guided exploration objective
+    bool tree_guidance_enabled;
+    std::string tree_confirmed_topic;
+    std::string tree_candidate_topic;
+    double tree_gain_weight;
+    double tree_candidate_bonus;
+    double tree_uncertainty_conf_weight;
+    double tree_uncertainty_fit_weight;
+    double tree_uncertainty_age_weight;
+    double tree_age_tau_sec;
+    double tree_view_min_range;
+    double tree_view_max_range;
+    double tree_preferred_range;
+    double tree_range_sigma;
+    double tree_fit_error_norm;
 
   };
 

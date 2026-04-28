@@ -28,6 +28,11 @@ O contexto ativo da run fica em:
 
 Com o contexto ativo, os outputs vão automaticamente para a pasta da run.
 
+Observações desta versão:
+- `world_jean_exploration.yaml` já ativa objetivo guiado por árvores (`tree_guidance/enabled: true`).
+- O `tree_stack` está mais restritivo contra merge e, por padrão, exige `sklearn` no detector.
+- Se precisar permitir fallback temporário: `DETECTOR_REQUIRE_SKLEARN=false ./daep/run_tree_stack_realtime.sh /camera/depth/points world`
+
 ### 3) Snapshot manual a qualquer momento
 ```bash
 ./daep/experiment_run.sh snapshot

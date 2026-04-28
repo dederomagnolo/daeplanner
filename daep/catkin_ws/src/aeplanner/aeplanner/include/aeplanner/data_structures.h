@@ -17,10 +17,39 @@ public:
   std::vector<RRTNode*> children_;
   double gain_;
   double dynamic_gain_;
+  double base_dynamic_gain_;
+  double tree_gain_raw_;
+  double tree_gain_weighted_;
+  int tree_best_id_;
+  double tree_best_distance_;
+  double tree_best_confidence_;
+  double tree_best_contribution_;
+  bool tree_best_confirmed_;
+  int tree_total_count_;
+  int tree_considered_count_;
+  int tree_confirmed_considered_;
+  int tree_candidate_considered_;
   double dfm_score_;
   bool gain_explicitly_calculated_;
 
-  RRTNode() : parent_(NULL), gain_(0.0), dynamic_gain_(0.0), dfm_score_(0.0), gain_explicitly_calculated_(false)
+  RRTNode()
+      : parent_(NULL)
+      , gain_(0.0)
+      , dynamic_gain_(0.0)
+      , base_dynamic_gain_(0.0)
+      , tree_gain_raw_(0.0)
+      , tree_gain_weighted_(0.0)
+      , tree_best_id_(-1)
+      , tree_best_distance_(0.0)
+      , tree_best_confidence_(0.0)
+      , tree_best_contribution_(0.0)
+      , tree_best_confirmed_(false)
+      , tree_total_count_(0)
+      , tree_considered_count_(0)
+      , tree_confirmed_considered_(0)
+      , tree_candidate_considered_(0)
+      , dfm_score_(0.0)
+      , gain_explicitly_calculated_(false)
   {
   }
 
@@ -47,6 +76,19 @@ public:
       new_node->state_ = current_node->state_;
       new_node->gain_ = current_node->gain_;
       new_node->dynamic_gain_ = current_node->dynamic_gain_;
+      new_node->base_dynamic_gain_ = current_node->base_dynamic_gain_;
+      new_node->tree_gain_raw_ = current_node->tree_gain_raw_;
+      new_node->tree_gain_weighted_ = current_node->tree_gain_weighted_;
+      new_node->tree_best_id_ = current_node->tree_best_id_;
+      new_node->tree_best_distance_ = current_node->tree_best_distance_;
+      new_node->tree_best_confidence_ = current_node->tree_best_confidence_;
+      new_node->tree_best_contribution_ = current_node->tree_best_contribution_;
+      new_node->tree_best_confirmed_ = current_node->tree_best_confirmed_;
+      new_node->tree_total_count_ = current_node->tree_total_count_;
+      new_node->tree_considered_count_ = current_node->tree_considered_count_;
+      new_node->tree_confirmed_considered_ = current_node->tree_confirmed_considered_;
+      new_node->tree_candidate_considered_ = current_node->tree_candidate_considered_;
+      new_node->dfm_score_ = current_node->dfm_score_;
       new_node->gain_explicitly_calculated_ = current_node->gain_explicitly_calculated_;
       new_node->parent_ = NULL;
 
@@ -65,7 +107,7 @@ public:
   }
 
   // Dynamic score
-  double dynamic_score(double lambda, double zeta)
+  double dynamic_score(double lambda, double zeta) const
   { 
     // zeta * frequency map
     if (this->parent_){
@@ -95,7 +137,7 @@ public:
       return 0;
   }
 
-  double distance(RRTNode* other)
+  double distance(RRTNode* other) const
   {
     Eigen::Vector3d p3(this->state_[0], this->state_[1], this->state_[2]);
     Eigen::Vector3d q3(other->state_[0], other->state_[1], other->state_[2]);

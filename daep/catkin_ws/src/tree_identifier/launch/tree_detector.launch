@@ -10,6 +10,7 @@
   <arg name="detection_radius_topic" default="/tree_detection_radii" />
 
   <arg name="clustering_mode" default="dbscan_gmm" />
+  <arg name="require_sklearn" default="false" />
   <arg name="dbscan_eps" default="0.30" />
   <arg name="dbscan_min_samples" default="10" />
   <arg name="min_cluster_points" default="3" />
@@ -39,6 +40,7 @@
     <param name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
     <param name="detection_radius_topic" value="$(arg detection_radius_topic)" />
     <param name="clustering_mode" value="$(arg clustering_mode)" />
+    <param name="require_sklearn" value="$(arg require_sklearn)" />
     <param name="dbscan_eps" value="$(arg dbscan_eps)" />
     <param name="dbscan_min_samples" value="$(arg dbscan_min_samples)" />
     <param name="min_cluster_points" value="$(arg min_cluster_points)" />

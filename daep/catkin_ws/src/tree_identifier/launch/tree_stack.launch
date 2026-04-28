@@ -7,9 +7,10 @@
 
   <!-- Tracker tuning -->
   <arg name="tracker_use_array_input" default="true" />
-  <arg name="tracker_max_match_dist" default="0.6" />
-  <arg name="tracker_max_diameter_delta" default="0.45" />
+  <arg name="tracker_max_match_dist" default="0.50" />
+  <arg name="tracker_max_diameter_delta" default="0.35" />
   <arg name="tracker_diameter_weight" default="0.4" />
+  <arg name="tracker_min_assignment_margin" default="0.10" />
   <arg name="tracker_position_alpha" default="0.45" />
   <arg name="tracker_diameter_alpha" default="0.38" />
   <arg name="tracker_min_detection_confidence" default="0.55" />
@@ -27,10 +28,11 @@
   <arg name="map_candidate_array_topic" default="/tree_map_candidate_full" />
   <arg name="map_marker_topic" default="/tree_map_markers" />
   <arg name="fuser_use_array_input" default="true" />
-  <arg name="fuser_association_dist" default="0.70" />
-  <arg name="fuser_id_reuse_max_dist" default="0.95" />
-  <arg name="fuser_max_diameter_delta" default="0.45" />
+  <arg name="fuser_association_dist" default="0.55" />
+  <arg name="fuser_id_reuse_max_dist" default="0.70" />
+  <arg name="fuser_max_diameter_delta" default="0.35" />
   <arg name="fuser_diameter_assoc_weight" default="0.35" />
+  <arg name="fuser_min_assignment_margin" default="0.10" />
   <arg name="fuser_min_confirmations" default="3" />
   <arg name="fuser_max_std_xy" default="0.70" />
   <arg name="fuser_max_std_diameter" default="0.28" />
@@ -52,6 +54,7 @@
   <arg name="detection_radius_topic" default="/tree_detection_radii" />
   <arg name="detector_output_array_topic" default="/tree_detections_full" />
   <arg name="detector_clustering_mode" default="dbscan_gmm" />
+  <arg name="detector_require_sklearn" default="true" />
   <arg name="detector_dbscan_eps" default="0.30" />
   <arg name="detector_dbscan_min_samples" default="10" />
   <arg name="detector_min_cluster_points" default="3" />
@@ -113,6 +116,7 @@
     <arg name="cluster_labels_topic" value="$(arg cluster_labels_topic)" />
     <arg name="detection_radius_topic" value="$(arg detection_radius_topic)" />
     <arg name="clustering_mode" value="$(arg detector_clustering_mode)" />
+    <arg name="require_sklearn" value="$(arg detector_require_sklearn)" />
     <arg name="dbscan_eps" value="$(arg detector_dbscan_eps)" />
     <arg name="dbscan_min_samples" value="$(arg detector_dbscan_min_samples)" />
     <arg name="min_cluster_points" value="$(arg detector_min_cluster_points)" />
@@ -144,6 +148,7 @@
     <arg name="max_match_dist" value="$(arg tracker_max_match_dist)" />
     <arg name="max_diameter_delta" value="$(arg tracker_max_diameter_delta)" />
     <arg name="diameter_weight" value="$(arg tracker_diameter_weight)" />
+    <arg name="min_assignment_margin" value="$(arg tracker_min_assignment_margin)" />
     <arg name="position_alpha" value="$(arg tracker_position_alpha)" />
     <arg name="diameter_alpha" value="$(arg tracker_diameter_alpha)" />
     <arg name="min_detection_confidence" value="$(arg tracker_min_detection_confidence)" />
@@ -170,6 +175,7 @@
     <arg name="id_reuse_max_dist" value="$(arg fuser_id_reuse_max_dist)" />
     <arg name="max_diameter_delta" value="$(arg fuser_max_diameter_delta)" />
     <arg name="diameter_assoc_weight" value="$(arg fuser_diameter_assoc_weight)" />
+    <arg name="min_assignment_margin" value="$(arg fuser_min_assignment_margin)" />
     <arg name="min_confirmations" value="$(arg fuser_min_confirmations)" />
     <arg name="max_std_xy" value="$(arg fuser_max_std_xy)" />
     <arg name="max_std_diameter" value="$(arg fuser_max_std_diameter)" />

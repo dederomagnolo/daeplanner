@@ -16,6 +16,7 @@
   <arg name="id_reuse_max_dist" default="0.95" />
   <arg name="max_diameter_delta" default="0.45" />
   <arg name="diameter_assoc_weight" default="0.35" />
+  <arg name="min_assignment_margin" default="0.0" />
   <arg name="min_confirmations" default="3" />
   <arg name="max_std_xy" default="0.70" />
   <arg name="max_std_diameter" default="0.28" />
@@ -51,6 +52,7 @@
     <param name="id_reuse_max_dist" value="$(arg id_reuse_max_dist)" />
     <param name="max_diameter_delta" value="$(arg max_diameter_delta)" />
     <param name="diameter_assoc_weight" value="$(arg diameter_assoc_weight)" />
+    <param name="min_assignment_margin" value="$(arg min_assignment_margin)" />
     <param name="min_confirmations" value="$(arg min_confirmations)" />
     <param name="max_std_xy" value="$(arg max_std_xy)" />
     <param name="max_std_diameter" value="$(arg max_std_diameter)" />

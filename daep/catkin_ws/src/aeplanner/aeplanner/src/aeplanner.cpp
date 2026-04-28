@@ -1,6 +1,21 @@
 #include <aeplanner/aeplanner.h>
 #include <tf2/utils.h>
 #include <cstdlib>
+#include <cmath>
+#include <fstream>
+#include <iomanip>
+
+namespace
+{
+double clamp01(double v)
+{
+  if (v < 0.0)
+    return 0.0;
+  if (v > 1.0)
+    return 1.0;
+  return v;
+}
+} // namespace
 
 namespace aeplanner
 {
@@ -30,18 +45,313 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , best_node_(NULL)
   , best_branch_root_(NULL)
   , dynamic_mode_(false)
+  , tree_guidance_log_ready_(false)
 {
   params_ = readParams();
+  initTreeGuidanceLog();
   int experiment_seed = -1;
   const std::string ns = ros::this_node::getNamespace();
   if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {
     srand(static_cast<unsigned int>(experiment_seed));
     ROS_INFO_STREAM("AEPlanner random seed: " << experiment_seed);
   }
+
+  if (params_.tree_guidance_enabled)
+  {
+    tree_confirmed_sub_ = nh_.subscribe(
+        params_.tree_confirmed_topic, 1, &AEPlanner::confirmedTreeMapCallback, this);
+    tree_candidate_sub_ = nh_.subscribe(
+        params_.tree_candidate_topic, 1, &AEPlanner::candidateTreeMapCallback, this);
+    ROS_INFO_STREAM("Tree guidance enabled. confirmed_topic=" << params_.tree_confirmed_topic
+                    << " candidate_topic=" << params_.tree_candidate_topic
+                    << " gain_weight=" << params_.tree_gain_weight);
+  }
+  else
+  {
+    ROS_INFO("Tree guidance disabled.");
+  }
   as_.start();
 
   // Initialize kd-tree
   kd_tree_ = kd_create(3);
+}
+
+void AEPlanner::confirmedTreeMapCallback(const tree_identifier::TreeDetectionArray::ConstPtr& msg)
+{
+  updateTreeMap(msg, true);
+}
+
+void AEPlanner::candidateTreeMapCallback(const tree_identifier::TreeDetectionArray::ConstPtr& msg)
+{
+  updateTreeMap(msg, false);
+}
+
+void AEPlanner::updateTreeMap(const tree_identifier::TreeDetectionArray::ConstPtr& msg, bool confirmed)
+{
+  std::lock_guard<std::mutex> lock(tree_map_mutex_);
+  std::map<int, TreeTargetState>& target_map = confirmed ? confirmed_trees_ : candidate_trees_;
+  const ros::Time now = ros::Time::now();
+
+  std::map<int, TreeTargetState> updated;
+  for (std::vector<tree_identifier::TreeDetection>::const_iterator it = msg->detections.begin();
+       it != msg->detections.end(); ++it)
+  {
+    const tree_identifier::TreeDetection& det = *it;
+    const int id = static_cast<int>(det.id);
+    if (id <= 0)
+      continue;
+
+    TreeTargetState state;
+    state.id = id;
+    state.position = Eigen::Vector3d(det.pose.position.x, det.pose.position.y, det.pose.position.z);
+    state.confidence = clamp01(static_cast<double>(det.confidence));
+    state.fit_error = std::max(0.0, static_cast<double>(det.fit_error));
+    state.diameter = std::max(0.0, static_cast<double>(det.diameter));
+    state.hits = std::max(0, static_cast<int>(det.cluster_points));
+    state.confirmed = confirmed;
+    state.last_hit_update = now;
+
+    std::map<int, TreeTargetState>::const_iterator prev = target_map.find(id);
+    if (prev != target_map.end())
+    {
+      if (state.hits <= prev->second.hits)
+      {
+        state.last_hit_update = prev->second.last_hit_update;
+      }
+    }
+
+    updated[id] = state;
+  }
+
+  target_map.swap(updated);
+}
+
+std::vector<AEPlanner::TreeTargetState> AEPlanner::snapshotTrees() const
+{
+  std::lock_guard<std::mutex> lock(tree_map_mutex_);
+  std::vector<TreeTargetState> trees;
+  trees.reserve(confirmed_trees_.size() + candidate_trees_.size());
+
+  for (std::map<int, TreeTargetState>::const_iterator it = confirmed_trees_.begin();
+       it != confirmed_trees_.end(); ++it)
+  {
+    trees.push_back(it->second);
+  }
+  for (std::map<int, TreeTargetState>::const_iterator it = candidate_trees_.begin();
+       it != candidate_trees_.end(); ++it)
+  {
+    trees.push_back(it->second);
+  }
+  return trees;
+}
+
+double AEPlanner::treeInformationGain(const Eigen::Vector4d& state, double time_of_arrival) const
+{
+  return treeInformationGainBreakdown(state, time_of_arrival).score;
+}
+
+AEPlanner::TreeGainBreakdown AEPlanner::treeInformationGainBreakdown(const Eigen::Vector4d& state, double time_of_arrival) const
+{
+  TreeGainBreakdown breakdown;
+  if (!params_.tree_guidance_enabled)
+    return breakdown;
+
+  const std::vector<TreeTargetState> trees = snapshotTrees();
+  breakdown.total_trees = static_cast<int>(trees.size());
+  if (trees.empty())
+    return breakdown;
+
+  const double now_sec = ros::Time::now().toSec();
+  const double min_range = std::max(0.0, params_.tree_view_min_range);
+  const double max_range = std::max(min_range, params_.tree_view_max_range);
+  const double pref_range = std::max(min_range, params_.tree_preferred_range);
+  const double sigma = std::max(1e-6, params_.tree_range_sigma);
+  const double fit_norm = std::max(1e-6, params_.tree_fit_error_norm);
+  const double age_tau = std::max(1e-6, params_.tree_age_tau_sec);
+
+  for (std::vector<TreeTargetState>::const_iterator it = trees.begin(); it != trees.end(); ++it)
+  {
+    const TreeTargetState& tree = *it;
+    const double dx = state[0] - tree.position[0];
+    const double dy = state[1] - tree.position[1];
+    const double dist_xy = std::sqrt(dx * dx + dy * dy);
+    if (dist_xy < min_range || dist_xy > max_range)
+      continue;
+    breakdown.considered_trees++;
+    if (tree.confirmed)
+      breakdown.confirmed_considered++;
+    else
+      breakdown.candidate_considered++;
+
+    const double range_err = (dist_xy - pref_range) / sigma;
+    const double range_weight = std::exp(-0.5 * range_err * range_err);
+
+    const double conf_unc = clamp01(1.0 - tree.confidence);
+    const double fit_unc = clamp01(tree.fit_error / fit_norm);
+    const double age_sec = std::max(0.0, now_sec - tree.last_hit_update.toSec() + time_of_arrival);
+    const double age_unc = 1.0 - std::exp(-age_sec / age_tau);
+
+    double uncertainty =
+        params_.tree_uncertainty_conf_weight * conf_unc +
+        params_.tree_uncertainty_fit_weight * fit_unc +
+        params_.tree_uncertainty_age_weight * age_unc;
+
+    if (!tree.confirmed)
+      uncertainty *= std::max(1.0, params_.tree_candidate_bonus);
+
+    const double contribution = range_weight * std::max(0.0, uncertainty);
+    breakdown.score += contribution;
+    if (contribution > breakdown.best_tree_contribution)
+    {
+      breakdown.best_tree_id = tree.id;
+      breakdown.best_tree_distance = dist_xy;
+      breakdown.best_tree_confidence = tree.confidence;
+      breakdown.best_tree_contribution = contribution;
+      breakdown.best_tree_confirmed = tree.confirmed;
+    }
+  }
+
+  return breakdown;
+}
+
+void AEPlanner::applyTreeGuidanceToNode(RRTNode* node, double time_of_arrival, std::tuple<double, double, double>& gain_tuple)
+{
+  if (!node)
+    return;
+
+  node->base_dynamic_gain_ = std::get<1>(gain_tuple);
+  node->tree_gain_raw_ = 0.0;
+  node->tree_gain_weighted_ = 0.0;
+  node->tree_best_id_ = -1;
+  node->tree_best_distance_ = 0.0;
+  node->tree_best_confidence_ = 0.0;
+  node->tree_best_contribution_ = 0.0;
+  node->tree_best_confirmed_ = false;
+  node->tree_total_count_ = 0;
+  node->tree_considered_count_ = 0;
+  node->tree_confirmed_considered_ = 0;
+  node->tree_candidate_considered_ = 0;
+
+  if (!params_.tree_guidance_enabled)
+    return;
+
+  const TreeGainBreakdown tree_gain = treeInformationGainBreakdown(node->state_, time_of_arrival);
+  node->tree_gain_raw_ = tree_gain.score;
+  node->tree_gain_weighted_ = params_.tree_gain_weight * tree_gain.score;
+  node->tree_best_id_ = tree_gain.best_tree_id;
+  node->tree_best_distance_ = tree_gain.best_tree_distance;
+  node->tree_best_confidence_ = tree_gain.best_tree_confidence;
+  node->tree_best_contribution_ = tree_gain.best_tree_contribution;
+  node->tree_best_confirmed_ = tree_gain.best_tree_confirmed;
+  node->tree_total_count_ = tree_gain.total_trees;
+  node->tree_considered_count_ = tree_gain.considered_trees;
+  node->tree_confirmed_considered_ = tree_gain.confirmed_considered;
+  node->tree_candidate_considered_ = tree_gain.candidate_considered;
+
+  std::get<1>(gain_tuple) += node->tree_gain_weighted_;
+  ROS_DEBUG_STREAM_THROTTLE(
+      1.0,
+      "tree_guidance gain: base_dynamic=" << node->base_dynamic_gain_
+      << " tree_gain=" << node->tree_gain_raw_
+      << " weighted=" << node->tree_gain_weighted_
+      << " final_dynamic=" << std::get<1>(gain_tuple)
+      << " best_tree_id=" << node->tree_best_id_
+      << " considered=" << node->tree_considered_count_);
+}
+
+void AEPlanner::initTreeGuidanceLog()
+{
+  const char* home = std::getenv("HOME");
+  if (!home)
+  {
+    ROS_WARN("HOME is not set. Tree guidance decision log disabled.");
+    return;
+  }
+
+  tree_guidance_log_path_ = std::string(home) + "/data/tree_guidance_waypoints.csv";
+  std::ofstream out(tree_guidance_log_path_.c_str(), std::ios::out | std::ios::trunc);
+  if (!out.is_open())
+  {
+    ROS_WARN_STREAM("Could not open tree guidance decision log: " << tree_guidance_log_path_);
+    return;
+  }
+
+  out << "ros_time,iteration,actions_taken,planner,"
+      << "goal_x,goal_y,goal_z,goal_yaw,"
+      << "goal_static_gain,goal_base_dynamic_gain,goal_tree_gain_raw,goal_tree_gain_weighted,goal_dynamic_gain_final,goal_dynamic_score,goal_dfm_score,"
+      << "goal_best_tree_id,goal_best_tree_distance_m,goal_best_tree_confidence,goal_best_tree_confirmed,goal_best_tree_contribution,"
+      << "goal_tree_total_count,goal_tree_considered_count,goal_tree_confirmed_considered,goal_tree_candidate_considered,"
+      << "leaf_x,leaf_y,leaf_z,leaf_yaw,"
+      << "leaf_static_gain,leaf_base_dynamic_gain,leaf_tree_gain_raw,leaf_tree_gain_weighted,leaf_dynamic_gain_final,leaf_dynamic_score,leaf_dfm_score,"
+      << "leaf_best_tree_id,leaf_best_tree_distance_m,leaf_best_tree_confidence,leaf_best_tree_confirmed,leaf_best_tree_contribution,"
+      << "leaf_tree_total_count,leaf_tree_considered_count,leaf_tree_confirmed_considered,leaf_tree_candidate_considered,"
+      << "tree_gain_weight,zero_gain"
+      << std::endl;
+  tree_guidance_log_ready_ = true;
+  ROS_INFO_STREAM("Tree guidance decision log: " << tree_guidance_log_path_);
+}
+
+void AEPlanner::logTreeGuidanceDecision(int iteration, int actions_taken, const RRTNode* executed_node, const RRTNode* best_leaf, const std::string& planner)
+{
+  if (!tree_guidance_log_ready_ || !executed_node)
+    return;
+
+  std::ofstream out(tree_guidance_log_path_.c_str(), std::ios::out | std::ios::app);
+  if (!out.is_open())
+  {
+    ROS_WARN_STREAM_THROTTLE(5.0, "Could not append tree guidance decision log: " << tree_guidance_log_path_);
+    return;
+  }
+
+  const RRTNode* leaf = best_leaf ? best_leaf : executed_node;
+  out << std::fixed << std::setprecision(6)
+      << ros::Time::now().toSec() << ","
+      << iteration << ","
+      << actions_taken << ","
+      << planner << ","
+      << executed_node->state_[0] << ","
+      << executed_node->state_[1] << ","
+      << executed_node->state_[2] << ","
+      << executed_node->state_[3] << ","
+      << executed_node->gain_ << ","
+      << executed_node->base_dynamic_gain_ << ","
+      << executed_node->tree_gain_raw_ << ","
+      << executed_node->tree_gain_weighted_ << ","
+      << executed_node->dynamic_gain_ << ","
+      << executed_node->dynamic_score(params_.lambda, params_.zeta) << ","
+      << executed_node->dfm_score_ << ","
+      << executed_node->tree_best_id_ << ","
+      << executed_node->tree_best_distance_ << ","
+      << executed_node->tree_best_confidence_ << ","
+      << (executed_node->tree_best_confirmed_ ? 1 : 0) << ","
+      << executed_node->tree_best_contribution_ << ","
+      << executed_node->tree_total_count_ << ","
+      << executed_node->tree_considered_count_ << ","
+      << executed_node->tree_confirmed_considered_ << ","
+      << executed_node->tree_candidate_considered_ << ","
+      << leaf->state_[0] << ","
+      << leaf->state_[1] << ","
+      << leaf->state_[2] << ","
+      << leaf->state_[3] << ","
+      << leaf->gain_ << ","
+      << leaf->base_dynamic_gain_ << ","
+      << leaf->tree_gain_raw_ << ","
+      << leaf->tree_gain_weighted_ << ","
+      << leaf->dynamic_gain_ << ","
+      << leaf->dynamic_score(params_.lambda, params_.zeta) << ","
+      << leaf->dfm_score_ << ","
+      << leaf->tree_best_id_ << ","
+      << leaf->tree_best_distance_ << ","
+      << leaf->tree_best_confidence_ << ","
+      << (leaf->tree_best_confirmed_ ? 1 : 0) << ","
+      << leaf->tree_best_contribution_ << ","
+      << leaf->tree_total_count_ << ","
+      << leaf->tree_considered_count_ << ","
+      << leaf->tree_confirmed_considered_ << ","
+      << leaf->tree_candidate_considered_ << ","
+      << params_.tree_gain_weight << ","
+      << params_.zero_gain
+      << std::endl;
 }
 
 /**
@@ -447,6 +757,12 @@ void AEPlanner::execute(const aeplanner::aeplannerGoalConstPtr& goal)
   if (best_node_->dynamic_score(params_.lambda, params_.zeta) > params_.zero_gain)
   {
     result.is_clear = true;
+    logTreeGuidanceDecision(
+        goal->header.seq,
+        goal->actions_taken,
+        best_branch_root_->children_[0],
+        best_node_,
+        "aep");
     ROS_DEBUG_STREAM("LOCAL PLANNING");
   }
   else
@@ -551,8 +867,7 @@ std::pair<RRTNode*, bool> AEPlanner::pathIsSafe(RRTNode* node,
 
 void AEPlanner::reevaluatePotentialInformationGainRecursive(RRTNode* node)
 {
-
- std::tuple<double, double, double> ret = gainCubature(node->state_, node->time_cost());
+ std::tuple<double, double, double> ret = getGain(node, node->time_cost());
   node->gain_ = std::get<0>(ret); // Assign static gain
   node->dynamic_gain_ = std::get<1>(ret); //Assign dynamic gain
   node->state_[3] = std::get<2>(ret); // Assign yaw angle that maximizes static gain
@@ -851,6 +1166,7 @@ std::tuple<double, double, double> AEPlanner::getGain(RRTNode* node, double time
   
   node->gain_explicitly_calculated_ = true;  
   std::tuple<double, double, double> ret = gainCubature(node->state_, time_of_arrival);
+  applyTreeGuidanceToNode(node, time_of_arrival, ret);
   ROS_DEBUG_STREAM("gain expl: " << std::get<0>(ret));
   return ret;
 }
@@ -866,6 +1182,11 @@ bool AEPlanner::reevaluate(aeplanner::Reevaluate::Request& req,
 
     //Compute the current gain in each cached node
     std::tuple <double, double, double> gain_response = gainCubature(pos, 0);
+    if (params_.tree_guidance_enabled)
+    {
+      const TreeGainBreakdown tree_gain = treeInformationGainBreakdown(pos, 0.0);
+      std::get<1>(gain_response) += params_.tree_gain_weight * tree_gain.score;
+    }
     ROS_DEBUG_STREAM("gain reeval expl: " << std::get<0>(gain_response));
 
     //Add the result for each node in a response list

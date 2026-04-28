@@ -9,6 +9,7 @@
   <arg name="max_match_dist" default="0.6" />
   <arg name="max_diameter_delta" default="0.45" />
   <arg name="diameter_weight" default="0.4" />
+  <arg name="min_assignment_margin" default="0.0" />
   <arg name="position_alpha" default="0.45" />
   <arg name="diameter_alpha" default="0.38" />
   <arg name="min_detection_confidence" default="0.55" />
@@ -28,6 +29,7 @@
     <param name="max_match_dist" value="$(arg max_match_dist)" />
     <param name="max_diameter_delta" value="$(arg max_diameter_delta)" />
     <param name="diameter_weight" value="$(arg diameter_weight)" />
+    <param name="min_assignment_margin" value="$(arg min_assignment_margin)" />
     <param name="position_alpha" value="$(arg position_alpha)" />
     <param name="diameter_alpha" value="$(arg diameter_alpha)" />
     <param name="min_detection_confidence" value="$(arg min_detection_confidence)" />

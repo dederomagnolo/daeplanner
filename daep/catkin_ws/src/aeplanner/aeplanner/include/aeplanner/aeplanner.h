@@ -45,11 +45,14 @@
 #include <algorithm>
 #include <iostream>
 #include <tuple>
+#include <string>
 #include <pigain/QueryDFM.h>
 #include <pigain/Score.h>
+#include <tree_identifier/TreeDetectionArray.h>
 
 // synch
 #include <mutex>
+#include <map>
 
 
 namespace aeplanner
@@ -79,6 +82,8 @@ private:
   // Subscribers
   ros::Subscriber octomap_sub_;
   ros::Subscriber agent_pose_sub_;
+  ros::Subscriber tree_confirmed_sub_;
+  ros::Subscriber tree_candidate_sub_;
 
   // DAEP
   ros::Subscriber human_sub_;
@@ -100,6 +105,8 @@ private:
   ros::ServiceServer reevaluate_server_;
   ros::ServiceClient nn_yaw_query_client_;
   ros::ServiceClient dfm_client_;
+  std::string tree_guidance_log_path_;
+  bool tree_guidance_log_ready_;
 
   // DAEP
 
@@ -107,6 +114,59 @@ private:
   std::map<std::string, std::pair<geometry_msgs::Pose, geometry_msgs::Twist>> dynamic_objects;
   std::vector<std::pair<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, std::vector<Eigen::MatrixXd>>> predicted_data;
   std::mutex vecMutex;
+
+  struct TreeTargetState
+  {
+    int id;
+    Eigen::Vector3d position;
+    double confidence;
+    double fit_error;
+    double diameter;
+    int hits;
+    ros::Time last_hit_update;
+    bool confirmed;
+  };
+
+  struct TreeGainBreakdown
+  {
+    double score;
+    int best_tree_id;
+    double best_tree_distance;
+    double best_tree_confidence;
+    double best_tree_contribution;
+    bool best_tree_confirmed;
+    int total_trees;
+    int considered_trees;
+    int confirmed_considered;
+    int candidate_considered;
+
+    TreeGainBreakdown()
+        : score(0.0)
+        , best_tree_id(-1)
+        , best_tree_distance(0.0)
+        , best_tree_confidence(0.0)
+        , best_tree_contribution(0.0)
+        , best_tree_confirmed(false)
+        , total_trees(0)
+        , considered_trees(0)
+        , confirmed_considered(0)
+        , candidate_considered(0)
+    {
+    }
+  };
+  std::map<int, TreeTargetState> confirmed_trees_;
+  std::map<int, TreeTargetState> candidate_trees_;
+  mutable std::mutex tree_map_mutex_;
+
+  void confirmedTreeMapCallback(const tree_identifier::TreeDetectionArray::ConstPtr& msg);
+  void candidateTreeMapCallback(const tree_identifier::TreeDetectionArray::ConstPtr& msg);
+  void updateTreeMap(const tree_identifier::TreeDetectionArray::ConstPtr& msg, bool confirmed);
+  double treeInformationGain(const Eigen::Vector4d& state, double time_of_arrival) const;
+  TreeGainBreakdown treeInformationGainBreakdown(const Eigen::Vector4d& state, double time_of_arrival) const;
+  void applyTreeGuidanceToNode(RRTNode* node, double time_of_arrival, std::tuple<double, double, double>& gain_tuple);
+  void initTreeGuidanceLog();
+  void logTreeGuidanceDecision(int iteration, int actions_taken, const RRTNode* executed_node, const RRTNode* best_leaf, const std::string& planner);
+  std::vector<TreeTargetState> snapshotTrees() const;
 
   std::vector<std::tuple<double, double, Eigen::MatrixXd>> createCovarianceEllipse(const std::vector<Eigen::MatrixXd>& cov_matrices);
   bool willViewBeBlocked(Eigen::Vector3d point, int index, bool visualize_ghosts);

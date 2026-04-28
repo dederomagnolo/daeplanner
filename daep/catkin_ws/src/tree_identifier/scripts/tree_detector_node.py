@@ -59,6 +59,7 @@ class TreeDetectorNode(object):
         self.max_diameter = rospy.get_param("~max_diameter", 1.00)
 
         self.clustering_mode = rospy.get_param("~clustering_mode", "dbscan_gmm")
+        self.require_sklearn = rospy.get_param("~require_sklearn", False)
 
         self.dbscan_eps = rospy.get_param("~dbscan_eps", 0.30)
         self.dbscan_min_samples = rospy.get_param("~dbscan_min_samples", 10)
@@ -98,6 +99,9 @@ class TreeDetectorNode(object):
         rospy.Subscriber(self.input_cloud_topic, PointCloud2, self.cloud_callback, queue_size=1)
 
         if self.clustering_mode == "dbscan_gmm" and (not SKLEARN_AVAILABLE):
+            if self.require_sklearn:
+                rospy.logfatal("tree_detector_node: sklearn unavailable while require_sklearn=true")
+                raise RuntimeError("sklearn unavailable for dbscan_gmm mode")
             rospy.logwarn("tree_detector_node: sklearn unavailable, forcing fallback to grid_cc")
             self.clustering_mode = "grid_cc"
 
