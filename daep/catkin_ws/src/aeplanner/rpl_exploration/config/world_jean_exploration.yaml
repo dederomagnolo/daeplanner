@@ -10,24 +10,25 @@ system/bbx/overshoot: 0.25
 
 aep/gain/r_min: 0
 aep/gain/r_max: 6
-aep/gain/zero: 15
+aep/gain/zero: 110
 aep/gain/lambda: 0.75
 aep/gain/sigma_thresh: 0.2
-aep/tree/extension_range: 1
+aep/tree/extension_range: 1.2
 aep/tree/max_sampling_radius: 10
 aep/tree/initial_iterations: 15
 aep/tree/cutoff_iterations: 30
 
 # DAEP
-daep/gain/cache_node_threshold: 15
-daep/gain/node_gain_threshold: 15
+daep/gain/cache_node_threshold: 12
+daep/gain/node_gain_threshold: 12
 daep/dfm/zeta: 0.5
 daep/kf/iterations: 20
 daep/kf/time_step: 0.5
-daep/rrt/max_sampled_initial_nodes: 30
-daep/rrt/max_sampled_nodes: 70
+daep/rrt/max_sampled_initial_nodes: 40
+daep/rrt/max_sampled_nodes: 90
+daep/fixed_z_from_start: true
 boosted_boundary_length: 1
-boost_magnitude: 6
+boost_magnitude: 4
 global_planner_counter: 25
 max_avoidance_counter: 15
 drone_freeze: false

@@ -144,6 +144,9 @@ class Rrt
 
     double drone_linear_velocity;
     double drone_angular_velocity;
+    bool fixed_z_from_start_;
+    bool fixed_z_initialized_;
+    double fixed_z_value_;
 
     //SAFE PATH with DAEP
     std::map<std::string, std::pair<geometry_msgs::Pose, geometry_msgs::Twist>> dynamic_objects;

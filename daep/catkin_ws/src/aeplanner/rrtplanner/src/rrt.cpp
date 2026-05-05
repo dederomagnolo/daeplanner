@@ -15,6 +15,9 @@ Rrt::Rrt(const ros::NodeHandle& nh)
   , dynamic_mode_(false)
   , safe_path_srv(nh_.advertiseService("/rrtplanner/safe_path", &Rrt::safePathSrvCallback, this))
   , as_(nh_, "rrt", boost::bind(&Rrt::execute, this, _1), false)
+  , fixed_z_from_start_(false)
+  , fixed_z_initialized_(false)
+  , fixed_z_value_(0.0)
 {
 
   std::string ns = ros::this_node::getNamespace();
@@ -51,6 +54,9 @@ Rrt::Rrt(const ros::NodeHandle& nh)
   }
   if (!ros::param::get(ns + "/drone_angular_velocity", drone_angular_velocity)) {
     ROS_WARN_STREAM("No /drone_angular_velocity specified. Default: " << drone_angular_velocity);
+  }
+  if (!ros::param::get(ns + "/daep/fixed_z_from_start", fixed_z_from_start_)) {
+    ROS_WARN_STREAM("No daep/fixed_z_from_start specified. Default: " << fixed_z_from_start_);
   }
   int experiment_seed = -1;
   if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {
@@ -273,14 +279,24 @@ void Rrt::execute(const rrtplanner::rrtGoalConstPtr& goal)
   double r = bounding_radius_;
   double r_os = bounding_overshoot_;
   std::vector<RrtNode*> found_goals;
+  double planning_z = goal->start.pose.position.z;
+  if (fixed_z_from_start_) {
+    if (!fixed_z_initialized_ || std::fabs(fixed_z_value_ - planning_z) > 1e-6) {
+      fixed_z_value_ = planning_z;
+      fixed_z_initialized_ = true;
+      ROS_INFO_STREAM("RRT fixed_z_from_start enabled. Locked altitude at z=" << fixed_z_value_);
+    }
+    planning_z = fixed_z_value_;
+  }
 
   kdtree* kd_tree = kd_create(3);    // Initalize tree
   kdtree* goal_tree = kd_create(3);  // kd tree with all goals
   for (int i = 0; i < goal->goal_poses.poses.size(); ++i)
   {
+    double goal_z = fixed_z_from_start_ ? planning_z : goal->goal_poses.poses[i].position.z;
     Eigen::Vector3d* g = new Eigen::Vector3d(goal->goal_poses.poses[i].position.x,
                                              goal->goal_poses.poses[i].position.y,
-                                             goal->goal_poses.poses[i].position.z);
+                                             goal_z);
     kd_insert3(goal_tree, (*g)[0], (*g)[1], (*g)[2], g);
   }
 
@@ -289,7 +305,7 @@ void Rrt::execute(const rrtplanner::rrtGoalConstPtr& goal)
   RrtNode* root = new RrtNode;
   root->pos[0] = goal->start.pose.position.x;
   root->pos[1] = goal->start.pose.position.y;
-  root->pos[2] = goal->start.pose.position.z;
+  root->pos[2] = planning_z;
   root->parent = NULL;
   kd_insert3(kd_tree, root->pos[0], root->pos[1], root->pos[2], root);
 
@@ -362,9 +378,14 @@ void Rrt::octomapCallback(const octomap_msgs::Octomap& msg)
 Eigen::Vector3d Rrt::sample()
 {
   Eigen::Vector3d x_samp;
-  for (int i = 0; i < 3; ++i)
+  for (int i = 0; i < 2; ++i)
   {
     x_samp[i] = boundary_min_[i] + (((double)rand()) / ((double)RAND_MAX)) * (boundary_max_[i] - boundary_min_[i]);
+  }
+  if (fixed_z_from_start_) {
+    x_samp[2] = fixed_z_value_;
+  } else {
+    x_samp[2] = boundary_min_[2] + (((double)rand()) / ((double)RAND_MAX)) * (boundary_max_[2] - boundary_min_[2]);
   }
 
   return x_samp;

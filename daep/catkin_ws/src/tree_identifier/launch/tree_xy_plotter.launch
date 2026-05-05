@@ -25,6 +25,11 @@
   <arg name="show_map_labels" default="true" />
   <arg name="show_metrics" default="true" />
   <arg name="max_labels" default="70" />
+  <arg name="show_route_trace" default="true" />
+  <arg name="route_pose_topic" default="/pose" />
+  <arg name="route_min_point_dist" default="0.15" />
+  <arg name="route_max_points" default="4000" />
+  <arg name="route_line_width" default="1.8" />
 
   <node pkg="tree_identifier" type="tree_xy_plotter.py" name="tree_xy_plotter" output="screen">
     <param name="pose_topic" value="$(arg pose_topic)" />
@@ -53,5 +58,10 @@
     <param name="show_map_labels" value="$(arg show_map_labels)" />
     <param name="show_metrics" value="$(arg show_metrics)" />
     <param name="max_labels" value="$(arg max_labels)" />
+    <param name="show_route_trace" value="$(arg show_route_trace)" />
+    <param name="route_pose_topic" value="$(arg route_pose_topic)" />
+    <param name="route_min_point_dist" value="$(arg route_min_point_dist)" />
+    <param name="route_max_points" value="$(arg route_max_points)" />
+    <param name="route_line_width" value="$(arg route_line_width)" />
   </node>
 </launch>

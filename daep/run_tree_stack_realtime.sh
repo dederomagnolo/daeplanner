@@ -21,7 +21,9 @@ load_experiment_context() {
 input_cloud_topic="${1:-/camera/depth/points}"
 target_frame="${2:-world}"
 run_plotter="${RUN_PLOTTER:-true}"
-run_cluster_plotter="${RUN_CLUSTER_PLOTTER:-true}"
+# Cluster plotter disabled by design in the default realtime stack flow.
+# Keep this hardcoded to avoid accidental re-enable via old env vars.
+run_cluster_plotter="false"
 run_fuser="${RUN_FUSER:-true}"
 
 cd

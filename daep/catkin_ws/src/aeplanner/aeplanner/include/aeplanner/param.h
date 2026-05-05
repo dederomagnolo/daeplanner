@@ -66,6 +66,7 @@ namespace aeplanner
     int rrt_log_every_n;
 
     bool drone_freeze;
+    bool fixed_z_from_start;
 
     double global_planner_counter;
 

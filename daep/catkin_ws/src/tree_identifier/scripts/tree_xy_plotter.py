@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 import threading
+import math
 
 import rospy
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseArray, PoseStamped
 from std_msgs.msg import Int32MultiArray
 
 import matplotlib.pyplot as plt
@@ -44,6 +45,11 @@ class TreeXYPlotter(object):
         self.show_map_labels = rospy.get_param("~show_map_labels", True)
         self.show_metrics = rospy.get_param("~show_metrics", True)
         self.max_labels = rospy.get_param("~max_labels", 70)
+        self.show_route_trace = rospy.get_param("~show_route_trace", True)
+        self.route_pose_topic = rospy.get_param("~route_pose_topic", "/pose")
+        self.route_min_point_dist = float(rospy.get_param("~route_min_point_dist", 0.15))
+        self.route_max_points = int(rospy.get_param("~route_max_points", 4000))
+        self.route_line_width = float(rospy.get_param("~route_line_width", 1.8))
 
         self.lock = threading.Lock()
 
@@ -58,6 +64,8 @@ class TreeXYPlotter(object):
         self.map_ids = []
         self.map_candidate_points = []
         self.map_candidate_ids = []
+        self.route_points = []
+        self.route_length_m = 0.0
 
         self.text_artists = []
         self.metrics_artist = None
@@ -67,6 +75,8 @@ class TreeXYPlotter(object):
 
         rospy.Subscriber(self.pose_topic, PoseArray, self.live_pose_cb, queue_size=1)
         rospy.Subscriber(self.id_topic, Int32MultiArray, self.live_id_cb, queue_size=1)
+        if self.show_route_trace and self.route_pose_topic:
+            rospy.Subscriber(self.route_pose_topic, PoseStamped, self.route_pose_cb, queue_size=1)
 
         if self.enable_map_overlay:
             rospy.Subscriber(self.map_pose_topic, PoseArray, self.map_pose_cb, queue_size=1)
@@ -85,8 +95,10 @@ class TreeXYPlotter(object):
         self.map_candidate_scatter = self.ax.scatter(
             [], [], c="#e67e22", s=62, marker="^", alpha=0.85, label="candidate"
         )
+        self.route_line, = self.ax.plot([], [], color="#444444", linewidth=self.route_line_width, alpha=0.85, label="route")
+        self.route_head_scatter = self.ax.scatter([], [], c="#111111", s=24, marker="o", alpha=0.9, label="drone")
 
-        if self.enable_map_overlay:
+        if self.enable_map_overlay or self.show_route_trace:
             self.ax.legend(loc="upper right")
 
         if self.show_metrics:
@@ -117,6 +129,13 @@ class TreeXYPlotter(object):
                 self.map_candidate_pose_topic,
                 self.map_candidate_id_topic,
             )
+        if self.show_route_trace and self.route_pose_topic:
+            rospy.loginfo(
+                "tree_xy_plotter route topic: %s (min_dist=%.2f max_points=%d)",
+                self.route_pose_topic,
+                self.route_min_point_dist,
+                self.route_max_points,
+            )
 
         self.anim = FuncAnimation(self.fig, self.update_plot, interval=self.refresh_ms)
 
@@ -130,6 +149,24 @@ class TreeXYPlotter(object):
             pts.append((p.position.x, p.position.y))
         with self.lock:
             self.live_points = pts
+
+    def _append_route_point_locked(self, x, y):
+        if self.route_points:
+            lx, ly = self.route_points[-1]
+            step = math.hypot(x - lx, y - ly)
+            if step < self.route_min_point_dist:
+                return
+            self.route_length_m += step
+        self.route_points.append((x, y))
+        if self.route_max_points > 0 and len(self.route_points) > self.route_max_points:
+            excess = len(self.route_points) - self.route_max_points
+            self.route_points = self.route_points[excess:]
+
+    def route_pose_cb(self, msg):
+        x = float(msg.pose.position.x)
+        y = float(msg.pose.position.y)
+        with self.lock:
+            self._append_route_point_locked(x, y)
 
     def map_id_cb(self, msg):
         with self.lock:
@@ -325,7 +362,7 @@ class TreeXYPlotter(object):
             txt = self.ax.text(x + 0.12, y + 0.12, label, fontsize=8.5, color=color)
             self.text_artists.append(txt)
 
-    def _update_metrics(self, frame_count, live_display_count, map_count, candidate_count):
+    def _update_metrics(self, frame_count, live_display_count, map_count, candidate_count, route_count, route_length_m):
         if self.metrics_artist is None:
             return
 
@@ -335,6 +372,9 @@ class TreeXYPlotter(object):
             "map_confirmed=%d" % map_count,
             "map_candidates=%d" % candidate_count,
         ]
+        if self.show_route_trace:
+            lines.append("route_points=%d" % route_count)
+            lines.append("route_length=%.1f m" % route_length_m)
         if self.accumulate_unique:
             lines.append("cache_size=%d" % len(self.cached_trees))
         self.metrics_artist.set_text("\n".join(lines))
@@ -347,6 +387,8 @@ class TreeXYPlotter(object):
             map_ids = list(self.map_ids)
             map_candidate_pts = list(self.map_candidate_points)
             map_candidate_ids = list(self.map_candidate_ids)
+            route_pts = list(self.route_points)
+            route_length_m = float(self.route_length_m)
 
         if self.accumulate_unique:
             display_live_pts, display_live_labels, new_entries = self._update_cache(live_pts, live_ids)
@@ -385,6 +427,15 @@ class TreeXYPlotter(object):
             self._set_offsets(self.map_scatter, [])
             self._set_offsets(self.map_candidate_scatter, [])
 
+        if self.show_route_trace and route_pts:
+            rx = [p[0] for p in route_pts]
+            ry = [p[1] for p in route_pts]
+            self.route_line.set_data(rx, ry)
+            self._set_offsets(self.route_head_scatter, [route_pts[-1]])
+        else:
+            self.route_line.set_data([], [])
+            self._set_offsets(self.route_head_scatter, [])
+
         if self.show_live_labels:
             self._add_labels(display_live_pts, display_live_labels, "#0b3c5d")
 
@@ -397,10 +448,14 @@ class TreeXYPlotter(object):
             live_display_count=len(display_live_pts),
             map_count=len(map_pts),
             candidate_count=len(map_candidate_pts),
+            route_count=len(route_pts),
+            route_length_m=route_length_m,
         )
 
         if not self.fixed_axes:
             all_pts = list(display_live_pts)
+            if self.show_route_trace:
+                all_pts.extend(route_pts)
             if self.enable_map_overlay:
                 all_pts.extend(map_pts)
                 all_pts.extend(map_candidate_pts)

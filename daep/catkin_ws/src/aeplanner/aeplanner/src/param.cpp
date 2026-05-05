@@ -223,6 +223,11 @@ namespace aeplanner
           ROS_WARN_STREAM("No drone_freeze specified. Default: " << params.drone_freeze);
     }
 
+    params.fixed_z_from_start = false;
+    if (!ros::param::get(ns + "/daep/fixed_z_from_start", params.fixed_z_from_start)) {
+          ROS_WARN_STREAM("No daep/fixed_z_from_start specified. Default: " << params.fixed_z_from_start);
+    }
+
     params.global_planner_counter = 25;
     if (!ros::param::get(ns + "/global_planner_counter", params.global_planner_counter)) {
         ROS_WARN_STREAM("No global_planner_counter specified. Default: " << params.global_planner_counter);

@@ -69,6 +69,8 @@ private:
   // Current state of agent (x, y, z, yaw)
   Eigen::Vector4d current_state_;
   bool current_state_initialized_;
+  bool fixed_z_initialized_;
+  double fixed_z_value_;
   bool dynamic_mode_;
 
   // Keep track of the best node and its score

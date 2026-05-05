@@ -71,6 +71,10 @@ def register_input_file(src: Path, manifest: Dict[str, dict], key: str) -> Optio
     return src
 
 
+def default_ground_truth_csv() -> Path:
+    return Path(__file__).resolve().parent / "ground_truth" / "world_tree_ground_truth.csv"
+
+
 def load_truth(csv_path: Path) -> List[dict]:
     rows = []
     with csv_path.open("r", newline="") as f:
@@ -86,6 +90,60 @@ def load_truth(csv_path: Path) -> List[dict]:
             )
     rows.sort(key=lambda d: (d["tree_id"] is None, d["tree_id"] or 999999))
     return rows
+
+
+def write_ground_truth_svg(path: Path, truth: List[dict], title: str, x_min: float, x_max: float, y_min: float, y_max: float) -> None:
+    width = 900
+    height = 680
+    left = 70
+    right = 30
+    top = 55
+    bottom = 75
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+
+    def sx(x: float) -> float:
+        return left + ((float(x) - x_min) / max(x_max - x_min, 1e-6)) * plot_w
+
+    def sy(y: float) -> float:
+        return top + (1.0 - ((float(y) - y_min) / max(y_max - y_min, 1e-6))) * plot_h
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
+        '<rect width="100%" height="100%" fill="white" />',
+        '<text x="{}" y="32" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(left, title),
+        '<rect x="{0}" y="{1}" width="{2}" height="{3}" fill="#fafafa" stroke="#333" />'.format(left, top, plot_w, plot_h),
+    ]
+
+    tick_count = 5
+    for i in range(tick_count + 1):
+        frac = float(i) / float(tick_count)
+        x_val = x_min + frac * (x_max - x_min)
+        y_val = y_min + frac * (y_max - y_min)
+        x = left + frac * plot_w
+        y = top + (1.0 - frac) * plot_h
+        lines.append('<line x1="{0:.2f}" y1="{1}" x2="{0:.2f}" y2="{2}" stroke="#e5e5e5" />'.format(x, top, top + plot_h))
+        lines.append('<line x1="{0}" y1="{1:.2f}" x2="{2}" y2="{1:.2f}" stroke="#e5e5e5" />'.format(left, y, left + plot_w))
+        lines.append('<text x="{:.2f}" y="{}" font-family="Arial" font-size="11" text-anchor="middle">{:.1f}</text>'.format(x, top + plot_h + 18, x_val))
+        lines.append('<text x="{}" y="{:.2f}" font-family="Arial" font-size="11" text-anchor="end">{:.1f}</text>'.format(left - 8, y + 4, y_val))
+
+    map_w = max(0.0, float(x_max) - float(x_min))
+    map_h = max(0.0, float(y_max) - float(y_min))
+    map_info = "mapa XY: x[{:.1f},{:.1f}] y[{:.1f},{:.1f}] | tamanho {:.1f} x {:.1f} m | GT arvores {}".format(
+        x_min, x_max, y_min, y_max, map_w, map_h, len(truth)
+    )
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#333">{}</text>'.format(left + 8, top + 16, map_info))
+
+    for tree in truth:
+        lines.append('<circle cx="{:.2f}" cy="{:.2f}" r="7" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(sx(tree["x"]), sy(tree["y"])))
+        if tree.get("tree_id") is not None:
+            lines.append('<text x="{:.2f}" y="{:.2f}" font-family="Arial" font-size="10" fill="#1f77b4">{}</text>'.format(sx(tree["x"]) + 8, sy(tree["y"]) - 8, tree["tree_id"]))
+
+    legend_y = height - 42
+    lines.append('<circle cx="{}" cy="{}" r="6" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(left, legend_y))
+    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">GT</text>'.format(left + 14, legend_y + 4))
+    lines.append("</svg>")
+    path.write_text("\n".join(lines) + "\n")
 
 
 def _get_float(row: dict, key: str, default: float = 0.0) -> float:
@@ -1606,7 +1664,6 @@ def main() -> int:
     host_snapshots_dir = Path("/home/daep/tree_snapshots")
     host_octomaps_dir = Path("/home/daep/octomaps")
     host_base_out = Path("/home/daep/experimentos")
-    host_world = Path("/home/daep/catkin_ws/src/drone_gazebo/worlds/world_jean.world")
     host_planner_config = Path("/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml")
     host_ti_scripts = Path("/home/daep/catkin_ws/src/tree_identifier/scripts")
     host_svg_pkl_plotter = Path("/home/daep/meus-resultados/plot_pickle_svg.py")
@@ -1615,7 +1672,6 @@ def main() -> int:
     local_snapshots_dir = script_dir / "tree_snapshots"
     local_octomaps_dir = script_dir / "octomaps"
     local_base_out = script_dir / "experimentos"
-    local_world = script_dir / "catkin_ws/src/drone_gazebo/worlds/world_jean.world"
     local_planner_config = script_dir / "catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml"
     local_ti_scripts = script_dir / "catkin_ws/src/tree_identifier/scripts"
     local_svg_pkl_plotter = script_dir / "meus-resultados/plot_pickle_svg.py"
@@ -1624,7 +1680,6 @@ def main() -> int:
     default_snapshots_dir = resolve_default_path(host_snapshots_dir, local_snapshots_dir)
     default_octomaps_dir = resolve_default_path(host_octomaps_dir, local_octomaps_dir)
     default_base_out = resolve_default_path(host_base_out, local_base_out)
-    default_world = resolve_default_path(host_world, local_world)
     default_planner_config = resolve_default_path(host_planner_config, local_planner_config)
     default_ti_scripts = resolve_default_path(host_ti_scripts, local_ti_scripts)
     default_svg_pkl_plotter = resolve_default_path(host_svg_pkl_plotter, local_svg_pkl_plotter)
@@ -1638,9 +1693,8 @@ def main() -> int:
     parser.add_argument("--snapshots-dir", default=str(default_snapshots_dir), help="Directory containing PKL snapshots.")
     parser.add_argument("--runtime-snapshots-dir", default="", help="Directory containing manual/autosnapshot folders.")
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
-    parser.add_argument("--world", default=str(default_world), help="Path to Gazebo .world file.")
     parser.add_argument("--planner-config", default=str(default_planner_config), help="Planner YAML with boundary/min and boundary/max.")
-    parser.add_argument("--uri-filter", default="world_jean_tree", help="URI filter used for GT extraction.")
+    parser.add_argument("--ground-truth-csv", default=str(default_ground_truth_csv()), help="Shared fixed tree ground-truth CSV.")
     parser.add_argument("--x-min", type=float, default=-10.0)
     parser.add_argument("--x-max", type=float, default=10.0)
     parser.add_argument("--y-min", type=float, default=-8.0)
@@ -1655,7 +1709,7 @@ def main() -> int:
     parser.add_argument(
         "--tree-identifier-scripts-dir",
         default=str(default_ti_scripts),
-        help="Directory with world_tree_* and tree_map_csv_plotter scripts.",
+        help="Directory with world_tree_compare_plotter.py and tree_map_csv_plotter.py.",
     )
     parser.add_argument(
         "--pkl-svg-plotter",
@@ -1704,10 +1758,10 @@ def main() -> int:
         return 2
     exp_dir.mkdir(parents=True, exist_ok=True)
 
-    world_path = Path(args.world).expanduser().resolve()
     planner_config_path = Path(args.planner_config).expanduser().resolve()
     ti_scripts_dir = Path(args.tree_identifier_scripts_dir).expanduser().resolve()
     pkl_svg_plotter = Path(args.pkl_svg_plotter).expanduser().resolve()
+    ground_truth_csv_path = Path(args.ground_truth_csv).expanduser().resolve()
 
     manifest = {
         "experiment_name": exp_name,
@@ -1788,7 +1842,6 @@ def main() -> int:
     map_svg = exp_dir / "tree_map_final_plot.svg"
     map_diameter_svg = exp_dir / "tree_map_diameter_plot.svg"
 
-    gt_script = ti_scripts_dir / "world_tree_ground_truth_plotter.py"
     cmp_script = ti_scripts_dir / "world_tree_compare_plotter.py"
     map_script = ti_scripts_dir / "tree_map_csv_plotter.py"
     map_csv_path = (exp_dir / "tree_map_final.csv") if args.copy_inputs else (data_dir / "tree_map_final.csv")
@@ -1798,34 +1851,17 @@ def main() -> int:
     rrt_goal_log_path = (exp_dir / "rrt_goal_log.csv") if args.copy_inputs else (data_dir / "rrt_goal_log.csv")
     pkl_input_path = (exp_dir / latest_pkl.name) if (args.copy_inputs and latest_pkl) else latest_pkl
 
-    if not gt_script.exists() or not cmp_script.exists() or not map_script.exists():
+    if not ground_truth_csv_path.exists():
+        print("Missing ground-truth CSV: {}".format(ground_truth_csv_path), file=sys.stderr)
+        return 1
+
+    if not cmp_script.exists() or not map_script.exists():
         print("Missing one or more required scripts in {}".format(ti_scripts_dir), file=sys.stderr)
         return 1
 
-    run_cmd(
-        [
-            "python3",
-            str(gt_script),
-            "--world",
-            str(world_path),
-            "--uri-filter",
-            args.uri_filter,
-            "--csv-out",
-            str(gt_csv),
-            "--svg-out",
-            str(gt_svg),
-            "--title",
-            "World Ground Truth",
-            "--x-min",
-            str(args.x_min),
-            "--x-max",
-            str(args.x_max),
-            "--y-min",
-            str(args.y_min),
-            "--y-max",
-            str(args.y_max),
-        ]
-    )
+    register_input_file(ground_truth_csv_path, manifest["inputs"], key="ground_truth_csv")
+    shutil.copy2(str(ground_truth_csv_path), str(gt_csv))
+    write_ground_truth_svg(gt_svg, load_truth(gt_csv), "World Ground Truth", args.x_min, args.x_max, args.y_min, args.y_max)
 
     run_cmd(
         [

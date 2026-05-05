@@ -1,0 +1,62 @@
+# Offline simulator config aligned with:
+# daep/catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml
+#
+# This file keeps only parameters the offline simulator currently consumes,
+# plus offline-only detector/evaluation knobs.
+
+camera/horizontal_fov: 103.2
+camera/vertical_fov: 77.4
+
+raycast/dr: 0.2
+raycast/dphi: 10
+raycast/dtheta: 10
+
+system/bbx/r: 0.2
+
+aep/gain/r_min: 0
+aep/gain/r_max: 6
+aep/gain/zero: 110
+aep/gain/lambda: 0.75
+aep/tree/extension_range: 1.2
+aep/tree/max_sampling_radius: 10
+aep/tree/initial_iterations: 15
+
+daep/rrt/max_sampled_initial_nodes: 40
+daep/rrt/max_sampled_nodes: 90
+daep/dfm/zeta: 0.5
+daep/fixed_z_from_start: true
+
+boosted_boundary_length: 1
+boost_magnitude: 4
+
+drone_linear_velocity: 0.5
+drone_angular_velocity: 1
+
+boundary/min: [-6, -6, 0.0]
+boundary/max: [6, 6, 6.0]
+res: 0.2
+
+# Offline-only controls.
+offline/stop_on_coverage: false
+# Baseline-run-B used 91 planner goals; keep the default budget comparable.
+offline/reference_iterations: 91
+
+# Offline detector port of tree_detector_node.py defaults.
+offline/tree_detector_enabled: true
+offline/tree_detector_slice_z_min: 1.15
+offline/tree_detector_slice_z_max: 1.45
+offline/tree_detector_dtheta: 2
+offline/tree_detector_dphi: 2
+offline/tree_detector_dbscan_eps: 0.30
+offline/tree_detector_dbscan_min_samples: 10
+offline/tree_detector_min_cluster_points: 3
+offline/tree_detector_ransac_iterations: 50
+offline/tree_detector_ransac_distance_threshold: 0.01
+offline/tree_detector_ransac_min_inlier_ratio: 0.0
+offline/tree_detector_min_diameter: 0.15
+offline/tree_detector_max_diameter: 1.00
+offline/tree_detector_cell_size: 0.20
+offline/tree_detector_min_points_per_cell: 3
+offline/tree_detector_min_cells_per_cluster: 3
+offline/tree_detector_max_cells_per_cluster: 200
+offline/tree_match_threshold: 0.60

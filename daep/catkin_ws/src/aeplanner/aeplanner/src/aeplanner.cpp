@@ -27,6 +27,8 @@ AEPlanner::AEPlanner(const ros::NodeHandle& nh)
   , best_node_client_(nh_.serviceClient<pigain::BestNode>("best_node_server"))
   , dfm_client_(nh_.serviceClient<pigain::QueryDFM>("dfm_query_server"))
   , current_state_initialized_(false)
+  , fixed_z_initialized_(false)
+  , fixed_z_value_(0.0)
   , ot_(NULL)
   , best_node_(NULL)
   , best_branch_root_(NULL)
@@ -968,12 +970,19 @@ Eigen::Vector4d AEPlanner::sampleNewPoint()
   // Samples one point uniformly over a sphere with a radius of
   // param_.max_sampling_radius
   Eigen::Vector4d point;
+  point[3] = 0.0;
   do
   {
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 2; i++)
       point[i] = params_.max_sampling_radius * 2.0 *
                  (((double)rand()) / ((double)RAND_MAX) - 0.5);
-  } while (pow(point[0], 2.0) + pow(point[1], 2.0) + pow(point[2], 2.0) >
+    if (params_.fixed_z_from_start) {
+      point[2] = 0.0;
+    } else {
+      point[2] = params_.max_sampling_radius * 2.0 *
+                 (((double)rand()) / ((double)RAND_MAX) - 0.5);
+    }
+  } while (pow(point[0], 2.0) + pow(point[1], 2.0) + (params_.fixed_z_from_start ? 0.0 : pow(point[2], 2.0)) >
            pow(params_.max_sampling_radius, 2.0));
 
   return point;
@@ -1056,7 +1065,7 @@ Eigen::Vector4d AEPlanner::restrictDistance(Eigen::Vector4d nearest,
 
   new_pos[0] = origin[0] + direction[0];
   new_pos[1] = origin[1] + direction[1];
-  new_pos[2] = origin[2] + direction[2];
+  new_pos[2] = params_.fixed_z_from_start ? origin[2] : origin[2] + direction[2];
 
   return new_pos;
 }
@@ -1494,7 +1503,16 @@ void AEPlanner::agentPoseCallback(const geometry_msgs::PoseStamped& msg)
 {
   current_state_[0] = msg.pose.position.x;
   current_state_[1] = msg.pose.position.y;
-  current_state_[2] = msg.pose.position.z;
+  if (params_.fixed_z_from_start) {
+    if (!fixed_z_initialized_) {
+      fixed_z_value_ = msg.pose.position.z;
+      fixed_z_initialized_ = true;
+      ROS_INFO_STREAM("DAEP fixed_z_from_start enabled. Locked altitude at z=" << fixed_z_value_);
+    }
+    current_state_[2] = fixed_z_value_;
+  } else {
+    current_state_[2] = msg.pose.position.z;
+  }
   current_state_[3] = tf2::getYaw(msg.pose.orientation);
   current_state_initialized_ = true;
 }
