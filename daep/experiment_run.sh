@@ -91,34 +91,17 @@ write_context_file() {
 }
 
 sync_data_into_run() {
-  local files=(
-    tree_map_final.csv
-    tree_map_final.json
-    tree_map_history.csv
-    tree_detection_history.csv
-    tree_guidance_waypoints.csv
-    coverage.csv
-    path.csv
-    logfile.csv
-    intervals.csv
-    collision.csv
-    rrt_tree_log.csv
-    rrt_goal_log.csv
-  )
   mkdir -p "${EXPERIMENT_DATA_DIR}"
-  local src_base="${EXPERIMENT_SOURCE_DATA_DIR:-/home/daep/data}"
-  for file_name in "${files[@]}"; do
-    local src="${src_base}/${file_name}"
-    if [[ -f "${src}" ]]; then
-      cp "${src}" "${EXPERIMENT_DATA_DIR}/${file_name}"
-    fi
-  done
 }
 
 clean_source_data_dir() {
-  local src_base="${EXPERIMENT_SOURCE_DATA_DIR:-/home/daep/data}"
+  local src_base="${EXPERIMENT_SOURCE_DATA_DIR:-${EXPERIMENT_DATA_DIR}}"
   if [[ -z "${src_base}" || ! -d "${src_base}" ]]; then
     echo "[finalize] source data dir not found, skip clean: ${src_base}"
+    return 0
+  fi
+  if [[ "${src_base}" == "${EXPERIMENT_DATA_DIR}" ]]; then
+    echo "[finalize] source data dir is experiment data dir; skip clean"
     return 0
   fi
 
@@ -237,7 +220,7 @@ cmd_init() {
   EXPERIMENT_SEED="${seed}"
   EXPERIMENT_RUN_DIR="${base_dir}/${run_id}"
   EXPERIMENT_DATA_DIR="${EXPERIMENT_RUN_DIR}/data"
-  EXPERIMENT_SOURCE_DATA_DIR="/home/daep/data"
+  EXPERIMENT_SOURCE_DATA_DIR="${EXPERIMENT_DATA_DIR}"
   EXPERIMENT_SNAPSHOT_DIR="${EXPERIMENT_RUN_DIR}/tree_snapshots"
   EXPERIMENT_OCTOMAP_DIR="${EXPERIMENT_RUN_DIR}/octomaps"
   EXPERIMENT_OCTOMAP_TOPIC="/aeplanner/octomap_full"
@@ -552,8 +535,11 @@ cmd_finalize() {
         echo "Unknown option for finalize: $1" >&2
         exit 1
         ;;
-    esac
+      esac
   done
+
+  # Stop autosnapshot before final collection/report to avoid concurrent writes.
+  cmd_autosnapshot stop >/dev/null 2>&1 || true
 
   sync_data_into_run
 

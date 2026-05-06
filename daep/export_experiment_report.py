@@ -1589,10 +1589,6 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         _append_map_stats(lines, "all_map", ms)
     lines.append("")
     lines.append("## Arquivos")
-    lines.append("- world_jean_ground_truth.csv/.svg")
-    lines.append("- world_jean_compare_vs_csv.svg")
-    lines.append("- tree_map_final_plot.svg (ID/hits)")
-    lines.append("- tree_map_diameter_plot.svg (ID/diameter)")
     lines.append("- matching.csv")
     lines.append("- metrics.json")
     if te:
@@ -1660,10 +1656,14 @@ def main() -> int:
         return any(arg == option or arg.startswith(option + "=") for arg in raw_argv)
 
     script_dir = Path(__file__).resolve().parent
-    host_data_dir = Path("/home/daep/data")
-    host_snapshots_dir = Path("/home/daep/tree_snapshots")
-    host_octomaps_dir = Path("/home/daep/octomaps")
-    host_base_out = Path("/home/daep/experimentos")
+    env_run_dir = os.environ.get("EXPERIMENT_RUN_DIR", "").strip()
+    env_data_dir = os.environ.get("EXPERIMENT_DATA_DIR", "").strip()
+    env_snapshots_dir = os.environ.get("EXPERIMENT_SNAPSHOT_DIR", "").strip()
+    env_octomaps_dir = os.environ.get("EXPERIMENT_OCTOMAP_DIR", "").strip()
+    host_data_dir = Path(env_data_dir) if env_data_dir else Path("/home/daep/data")
+    host_snapshots_dir = Path(env_snapshots_dir) if env_snapshots_dir else Path("/home/daep/tree_snapshots")
+    host_octomaps_dir = Path(env_octomaps_dir) if env_octomaps_dir else Path("/home/daep/octomaps")
+    host_base_out = Path(env_run_dir).parent if env_run_dir else Path("/home/daep/experimentos")
     host_planner_config = Path("/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml")
     host_ti_scripts = Path("/home/daep/catkin_ws/src/tree_identifier/scripts")
     host_svg_pkl_plotter = Path("/home/daep/meus-resultados/plot_pickle_svg.py")
@@ -1836,14 +1836,6 @@ def main() -> int:
     else:
         manifest["warnings"].append("No .bt found in octomaps dir.")
 
-    gt_csv = exp_dir / "world_jean_ground_truth.csv"
-    gt_svg = exp_dir / "world_jean_ground_truth.svg"
-    cmp_svg = exp_dir / "world_jean_compare_vs_csv.svg"
-    map_svg = exp_dir / "tree_map_final_plot.svg"
-    map_diameter_svg = exp_dir / "tree_map_diameter_plot.svg"
-
-    cmp_script = ti_scripts_dir / "world_tree_compare_plotter.py"
-    map_script = ti_scripts_dir / "tree_map_csv_plotter.py"
     map_csv_path = (exp_dir / "tree_map_final.csv") if args.copy_inputs else (data_dir / "tree_map_final.csv")
     history_csv_path = (exp_dir / "tree_map_history.csv") if args.copy_inputs else (data_dir / "tree_map_history.csv")
     path_csv_path = (exp_dir / "path.csv") if args.copy_inputs else (data_dir / "path.csv")
@@ -1855,61 +1847,7 @@ def main() -> int:
         print("Missing ground-truth CSV: {}".format(ground_truth_csv_path), file=sys.stderr)
         return 1
 
-    if not cmp_script.exists() or not map_script.exists():
-        print("Missing one or more required scripts in {}".format(ti_scripts_dir), file=sys.stderr)
-        return 1
-
     register_input_file(ground_truth_csv_path, manifest["inputs"], key="ground_truth_csv")
-    shutil.copy2(str(ground_truth_csv_path), str(gt_csv))
-    write_ground_truth_svg(gt_svg, load_truth(gt_csv), "World Ground Truth", args.x_min, args.x_max, args.y_min, args.y_max)
-
-    run_cmd(
-        [
-            "python3",
-            str(cmp_script),
-            "--truth-csv",
-            str(gt_csv),
-            "--map-csv",
-            str(map_csv_path),
-            "--svg-out",
-            str(cmp_svg),
-            "--title",
-            "{}: Ground Truth vs tree_map_final.csv".format(exp_name),
-            "--x-min",
-            str(args.x_min),
-            "--x-max",
-            str(args.x_max),
-            "--y-min",
-            str(args.y_min),
-            "--y-max",
-            str(args.y_max),
-        ]
-    )
-
-    run_cmd(
-        [
-            "python3",
-            str(map_script),
-            "--csv",
-            str(map_csv_path),
-            "--out",
-            str(map_svg),
-            "--label",
-            "id_hits",
-        ]
-    )
-    run_cmd(
-        [
-            "python3",
-            str(map_script),
-            "--csv",
-            str(map_csv_path),
-            "--out",
-            str(map_diameter_svg),
-            "--label",
-            "id_diameter",
-        ]
-    )
 
     has_numpy = importlib.util.find_spec("numpy") is not None
 
@@ -1940,7 +1878,7 @@ def main() -> int:
         if pkl_error:
             manifest["warnings"].append("PKL meta extraction failed: {}".format(pkl_error))
 
-    truth_rows = load_truth(gt_csv)
+    truth_rows = load_truth(ground_truth_csv_path)
     map_rows = load_map(map_csv_path)
     metrics, matching_rows = compute_metrics(
         truth_rows,
@@ -2021,15 +1959,6 @@ def main() -> int:
         rrt_goal_rows = load_rrt_goal_rows(rrt_goal_log_path)
         rrt_tree_rows = load_rrt_tree_rows(rrt_tree_log_path)
 
-        if rrt_goal_rows:
-            rrt_timeline_svg = exp_dir / "rrt_goal_timeline.svg"
-            write_rrt_goal_timeline_svg(
-                rrt_timeline_svg,
-                rrt_goal_rows,
-                "{}: RRT decisions over planner iterations".format(exp_name),
-            )
-            rrt_paths.append(rrt_timeline_svg)
-
         if rrt_tree_rows:
             rrt_samples_svg = exp_dir / "rrt_tree_samples.svg"
             write_rrt_tree_samples_svg(
@@ -2058,11 +1987,6 @@ def main() -> int:
     write_summary_md(summary_path, exp_name, metrics)
 
     for generated in (
-        gt_csv,
-        gt_svg,
-        cmp_svg,
-        map_svg,
-        map_diameter_svg,
         metrics_path,
         matching_path,
         summary_path,

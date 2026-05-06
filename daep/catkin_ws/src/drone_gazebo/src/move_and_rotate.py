@@ -14,6 +14,7 @@ from visualization_msgs.msg import Marker
 target_model_name = "drone"
 eps = 1e-6 # Avoid division by zero
 rotate = False # Rotating at the moment
+FIXED_Z_VALUE = None
 
 
 
@@ -163,7 +164,7 @@ def visualize_goal_avoidance_arrow(displacement_vector, drone_position, AVOIDANC
 
 
 def callback(all_states, goal):
-	global rotate, AVOIDANCE_GOAL, AVOIDANCE_GOAL_X, AVOIDANCE_GOAL_Y, AVOIDANCE_GOAL_Z, AVOIDANCE_GOAL_YAW, DRONEPOS
+	global rotate, AVOIDANCE_GOAL, AVOIDANCE_GOAL_X, AVOIDANCE_GOAL_Y, AVOIDANCE_GOAL_Z, AVOIDANCE_GOAL_YAW, DRONEPOS, FIXED_Z_VALUE
 	# Wait until drone is present
 	if target_model_name not in all_states.name:
 		return
@@ -181,6 +182,8 @@ def callback(all_states, goal):
 	cx = drone_position.x
 	cy = drone_position.y
 	cz = drone_position.z
+	if FIXED_Z_ENABLED and FIXED_Z_VALUE is None:
+		FIXED_Z_VALUE = cz
 	crx = drone_orientation.x
 	cry = drone_orientation.y
 	crz = drone_orientation.z
@@ -236,6 +239,8 @@ def callback(all_states, goal):
 				AVOIDANCE_GOAL_X = drone_position.x + displacement_vector[0]
 				AVOIDANCE_GOAL_Y = drone_position.y + displacement_vector[1]
 				AVOIDANCE_GOAL_Z = drone_position.z + displacement_vector[2]
+				if FIXED_Z_ENABLED and FIXED_Z_VALUE is not None:
+					AVOIDANCE_GOAL_Z = FIXED_Z_VALUE
 				AVOIDANCE_GOAL_YAW = math.atan2(AVOIDANCE_GOAL_Y - drone_position.y, AVOIDANCE_GOAL_X - drone_position.x)
 				
 				############### Adjust Goal ##############
@@ -275,7 +280,9 @@ def callback(all_states, goal):
 				# No avoidance goal
 				goal_x = goal.x
 				goal_y = goal.y
-				goal_z = goal.z	
+				goal_z = goal.z
+				if FIXED_Z_ENABLED and FIXED_Z_VALUE is not None:
+					goal_z = FIXED_Z_VALUE
 				goal_yaw = goal.yaw
 	
 				# Update the planner that we are no longer avoiding an obstacle
@@ -291,7 +298,9 @@ def callback(all_states, goal):
 		# Avoidance not activated, normal goal
 		goal_x = goal.x
 		goal_y = goal.y
-		goal_z = goal.z	
+		goal_z = goal.z
+		if FIXED_Z_ENABLED and FIXED_Z_VALUE is not None:
+			goal_z = FIXED_Z_VALUE
 		goal_yaw = goal.yaw
 
 	# Difference between current pose and goal pose
@@ -372,6 +381,8 @@ def callback(all_states, goal):
 					target_twist.linear.x = linear_velocity * dx/(dx**2+dy**2+dz**2+eps)**0.5	
 					target_twist.linear.y = linear_velocity * dy/(dx**2+dy**2+dz**2+eps)**0.5	
 					target_twist.linear.z = linear_velocity * dz/(dx**2+dy**2+dz**2+eps)**0.5
+				if FIXED_Z_ENABLED:
+					target_twist.linear.z = 0
 		
 				# Pose message
 				target_pose = current_pose
@@ -428,6 +439,7 @@ rospy.init_node("p2p_path", anonymous=True)
 
 # Parameters. 
 AVOIDANCE_ACTIVATED = rospy.get_param("~avoidance_mode")
+FIXED_Z_ENABLED = rospy.get_param("/daep/fixed_z_from_start", False)
 if AVOIDANCE_ACTIVATED:
     print("Drone avoidance mode is enabled.")
 else:

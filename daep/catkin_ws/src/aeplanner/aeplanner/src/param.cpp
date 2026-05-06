@@ -224,8 +224,8 @@ namespace aeplanner
     }
 
     params.fixed_z_from_start = false;
-    if (!ros::param::get(ns + "/daep/fixed_z_from_start", params.fixed_z_from_start)) {
-          ROS_WARN_STREAM("No daep/fixed_z_from_start specified. Default: " << params.fixed_z_from_start);
+    if (!ros::param::get("/daep/fixed_z_from_start", params.fixed_z_from_start)) {
+          ROS_WARN_STREAM("No /daep/fixed_z_from_start specified. Default: " << params.fixed_z_from_start);
     }
 
     params.global_planner_counter = 25;

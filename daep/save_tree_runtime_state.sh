@@ -19,7 +19,7 @@ set -euo pipefail
 #   CSV_SOURCE              (explicit tree_map_final.csv path)
 #   JSON_SOURCE             (explicit tree_map_final.json path)
 #   EXPERIMENT_DATA_DIR     (preferred data directory)
-#   EXPERIMENT_SOURCE_DATA_DIR (fallback data directory, default: /home/daep/data)
+#   EXPERIMENT_SOURCE_DATA_DIR (fallback data directory, defaults to EXPERIMENT_DATA_DIR when set)
 #   OCTOMAP_TOPIC           (default: /aeplanner/octomap_full)
 #   SAVE_OCTOMAP            (default: true)
 #   EXTRA_DATA_FILES        (space-separated list, defaults include planner CSVs)
@@ -43,10 +43,6 @@ pick_data_file() {
   fi
   if [[ -n "${EXPERIMENT_SOURCE_DATA_DIR:-}" && -f "${EXPERIMENT_SOURCE_DATA_DIR}/${file_name}" ]]; then
     echo "${EXPERIMENT_SOURCE_DATA_DIR}/${file_name}"
-    return 0
-  fi
-  if [[ -f "/home/daep/data/${file_name}" ]]; then
-    echo "/home/daep/data/${file_name}"
     return 0
   fi
   echo ""

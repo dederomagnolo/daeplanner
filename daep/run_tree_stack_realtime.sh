@@ -30,7 +30,7 @@ cd
 source .bashrc
 load_experiment_context
 
-default_data_dir="${EXPERIMENT_DATA_DIR:-/home/daep/data}"
+default_data_dir="${EXPERIMENT_DATA_DIR:-/home/daep/experimentos/adhoc/data}"
 default_snapshot_dir="${EXPERIMENT_SNAPSHOT_DIR:-/home/daep/tree_snapshots}"
 csv_out="${3:-${TREE_MAP_CSV_OUT:-${default_data_dir}/tree_map_final.csv}}"
 json_out="${4:-${TREE_MAP_JSON_OUT:-${default_data_dir}/tree_map_final.json}}"

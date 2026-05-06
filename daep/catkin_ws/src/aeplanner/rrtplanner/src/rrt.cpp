@@ -55,8 +55,8 @@ Rrt::Rrt(const ros::NodeHandle& nh)
   if (!ros::param::get(ns + "/drone_angular_velocity", drone_angular_velocity)) {
     ROS_WARN_STREAM("No /drone_angular_velocity specified. Default: " << drone_angular_velocity);
   }
-  if (!ros::param::get(ns + "/daep/fixed_z_from_start", fixed_z_from_start_)) {
-    ROS_WARN_STREAM("No daep/fixed_z_from_start specified. Default: " << fixed_z_from_start_);
+  if (!ros::param::get("/daep/fixed_z_from_start", fixed_z_from_start_)) {
+    ROS_WARN_STREAM("No /daep/fixed_z_from_start specified. Default: " << fixed_z_from_start_);
   }
   int experiment_seed = -1;
   if (ros::param::get(ns + "/experiment_seed", experiment_seed) && experiment_seed >= 0) {

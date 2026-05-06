@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstdlib>
 
 #include <ros/package.h>
 #include <ros/ros.h>
@@ -212,13 +213,20 @@ int main(int argc, char** argv)
   } 
 
   // Open logfile;
-  std::string path = ros::package::getPath("rpl_exploration");
   std::ofstream logfile, pathfile, coveragefile;
-  // Get the home directory path
-  std::string homePath = std::getenv("HOME");
-  logfile.open(homePath + "/data/logfile.csv");
-  pathfile.open(homePath + "/data/path.csv");
-  coveragefile.open(homePath + "/data/coverage.csv");
+  // Prefer explicit experiment data dir when available.
+  std::string data_dir;
+  const char* env_data_dir = std::getenv("EXPERIMENT_DATA_DIR");
+  if (env_data_dir && std::string(env_data_dir).size() > 0) {
+    data_dir = std::string(env_data_dir);
+  } else {
+    const char* env_home = std::getenv("HOME");
+    std::string home_path = env_home ? std::string(env_home) : std::string("/home/daep");
+    data_dir = home_path + "/data";
+  }
+  logfile.open(data_dir + "/logfile.csv");
+  pathfile.open(data_dir + "/path.csv");
+  coveragefile.open(data_dir + "/coverage.csv");
 
   // File Headers
   logfile << "Iteration, " << "Path length, " << "Time, " << "Planning, " << "Flying, " << std::endl;
