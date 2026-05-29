@@ -9,7 +9,7 @@ DEFAULT_CONTEXT_FILE="/tmp/daeplanner_current_run.env"
 print_usage() {
   cat <<'EOF'
 Usage:
-  ./experiment_run.sh init --name <experiment_name> [--seed <n>] [--id <run_id>] [--base-dir <dir>]
+  ./experiment_run.sh init --name <experiment_name> [--seed <n>] [--id <run_id>] [--base-dir <dir>] --world <world_name> --planner-config <yaml_path>
   ./experiment_run.sh use [--id <run_id> | --run-dir <dir>] [--base-dir <dir>]
   ./experiment_run.sh status
   ./experiment_run.sh snapshot [--tag <snapshot_tag>] [--save-octomap true|false]
@@ -78,6 +78,8 @@ write_context_file() {
     printf 'EXPERIMENT_OCTOMAP_DIR=%q\n' "${EXPERIMENT_OCTOMAP_DIR}"
     printf 'EXPERIMENT_OCTOMAP_TOPIC=%q\n' "${EXPERIMENT_OCTOMAP_TOPIC}"
     printf 'EXPERIMENT_RESULT_DIR=%q\n' "${EXPERIMENT_RESULT_DIR}"
+    printf 'EXPERIMENT_WORLD_NAME=%q\n' "${EXPERIMENT_WORLD_NAME:-}"
+    printf 'EXPERIMENT_PLANNER_CONFIG=%q\n' "${EXPERIMENT_PLANNER_CONFIG:-}"
     printf 'EXPERIMENT_CONTEXT_FILE=%q\n' "${ctx_path}"
     printf 'TREE_MAP_CSV_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.csv"
     printf 'TREE_MAP_JSON_OUT=%q\n' "${EXPERIMENT_DATA_DIR}/tree_map_final.json"
@@ -169,6 +171,8 @@ cmd_init() {
   local seed="-1"
   local run_id=""
   local base_dir="${DEFAULT_BASE_DIR}"
+  local world_name="${EXPERIMENT_WORLD_NAME:-}"
+  local planner_config="${EXPERIMENT_PLANNER_CONFIG:-}"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -188,6 +192,14 @@ cmd_init() {
         base_dir="${2:-}"
         shift 2
         ;;
+      --world)
+        world_name="${2:-}"
+        shift 2
+        ;;
+      --planner-config)
+        planner_config="${2:-}"
+        shift 2
+        ;;
       *)
         echo "Unknown option for init: $1" >&2
         exit 1
@@ -197,6 +209,18 @@ cmd_init() {
 
   if [[ -z "${name}" ]]; then
     echo "init requires --name <experiment_name>" >&2
+    exit 1
+  fi
+  if [[ -z "${world_name}" ]]; then
+    echo "init requires --world <world_name>" >&2
+    exit 1
+  fi
+  if [[ -z "${planner_config}" ]]; then
+    planner_config="/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/${world_name}_exploration.yaml"
+  fi
+  if [[ ! -f "${planner_config}" ]]; then
+    echo "planner config not found: ${planner_config}" >&2
+    echo "pass --planner-config <yaml_path> or ensure <world>_exploration.yaml exists." >&2
     exit 1
   fi
   if [[ -n "${seed}" && ! "${seed}" =~ ^-?[0-9]+$ ]]; then
@@ -225,6 +249,8 @@ cmd_init() {
   EXPERIMENT_OCTOMAP_DIR="${EXPERIMENT_RUN_DIR}/octomaps"
   EXPERIMENT_OCTOMAP_TOPIC="/aeplanner/octomap_full"
   EXPERIMENT_RESULT_DIR="${EXPERIMENT_RUN_DIR}/result"
+  EXPERIMENT_WORLD_NAME="${world_name}"
+  EXPERIMENT_PLANNER_CONFIG="${planner_config}"
 
   mkdir -p \
     "${EXPERIMENT_RUN_DIR}" \
@@ -239,6 +265,8 @@ cmd_init() {
 {
   "run_id": "${EXPERIMENT_RUN_ID}",
   "experiment_name": "${EXPERIMENT_NAME}",
+  "world_name": "${EXPERIMENT_WORLD_NAME}",
+  "planner_config": "${EXPERIMENT_PLANNER_CONFIG}",
   "seed": ${EXPERIMENT_SEED},
   "created_at": "$(date --iso-8601=seconds)"
 }
@@ -555,6 +583,23 @@ cmd_finalize() {
   report_dir="${EXPERIMENT_RUN_DIR}/${report_name}"
   summary_md="${report_dir}/summary.md"
 
+  if [[ -z "${EXPERIMENT_WORLD_NAME:-}" ]]; then
+    echo "[finalize] missing EXPERIMENT_WORLD_NAME in run context. Re-init run with --world." >&2
+    return 1
+  fi
+  if [[ -z "${EXPERIMENT_PLANNER_CONFIG:-}" ]]; then
+    EXPERIMENT_PLANNER_CONFIG="/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/${EXPERIMENT_WORLD_NAME}_exploration.yaml"
+  fi
+  if [[ ! -f "${EXPERIMENT_PLANNER_CONFIG}" ]]; then
+    echo "[finalize] planner config not found: ${EXPERIMENT_PLANNER_CONFIG}" >&2
+    echo "[finalize] set EXPERIMENT_PLANNER_CONFIG in run context or re-init with --planner-config." >&2
+    return 1
+  fi
+
+  local report_extra_args=()
+  report_extra_args+=(--world-name "${EXPERIMENT_WORLD_NAME}")
+  report_extra_args+=(--planner-config "${EXPERIMENT_PLANNER_CONFIG}")
+
   python3 "${SCRIPT_DIR}/export_experiment_report.py" \
     --name "${report_name}" \
     --base-dir "${EXPERIMENT_RUN_DIR}" \
@@ -563,7 +608,8 @@ cmd_finalize() {
     --runtime-snapshots-dir "${EXPERIMENT_RUN_DIR}/snapshots" \
     --octomaps-dir "${EXPERIMENT_OCTOMAP_DIR}" \
     --overwrite \
-    --clean-output
+    --clean-output \
+    "${report_extra_args[@]}"
 
   clean_source_data_dir
 

@@ -14,22 +14,22 @@ aep/gain/zero: 110
 aep/gain/lambda: 0.75
 aep/gain/sigma_thresh: 0.2
 aep/tree/extension_range: 1.2
-aep/tree/max_sampling_radius: 10
+aep/tree/max_sampling_radius: 14
 aep/tree/initial_iterations: 15
 aep/tree/cutoff_iterations: 30
 
 # DAEP
-daep/gain/cache_node_threshold: 12
-daep/gain/node_gain_threshold: 12
+daep/gain/cache_node_threshold: 15
+daep/gain/node_gain_threshold: 15
 daep/dfm/zeta: 0.5
 daep/kf/iterations: 20
 daep/kf/time_step: 0.5
 daep/rrt/max_sampled_initial_nodes: 40
-daep/rrt/max_sampled_nodes: 90
+daep/rrt/max_sampled_nodes: 130
 daep/fixed_z_from_start: true
 boosted_boundary_length: 1
 boost_magnitude: 4
-global_planner_counter: 25
+global_planner_counter: 8
 max_avoidance_counter: 15
 drone_freeze: false
 look_ahead_horizon: 5
@@ -48,9 +48,9 @@ drone_angular_velocity: 1
 
 rrt/min_nodes: 100
 
-boundary/min: [-6, -6, 0.0]
-boundary/max: [6, 6, 6.0]
-boundary/volume: 864
+boundary/min: [-15.7, -14.9, 0.0]
+boundary/max: [23.3, 16.1, 6.0]
+boundary/volume: 1209
 res: 0.2
 
 visualize_rays: false

@@ -1,0 +1,3 @@
+[submodule "external/biomass-simulation-resources"]
+	path = external/biomass-simulation-resources
+	url = git@github.com:dederomagnolo/biomass-simulation-resources.git

@@ -12,6 +12,39 @@ load_experiment_context() {
   fi
 }
 
+extract_xy_bounds_from_planner_config() {
+  local cfg="$1"
+  if [[ -z "${cfg}" || ! -f "${cfg}" ]]; then
+    return 1
+  fi
+
+  local min_line max_line
+  min_line="$(grep -E '^[[:space:]]*boundary/min:' "${cfg}" | tail -n 1 || true)"
+  max_line="$(grep -E '^[[:space:]]*boundary/max:' "${cfg}" | tail -n 1 || true)"
+  if [[ -z "${min_line}" || -z "${max_line}" ]]; then
+    return 1
+  fi
+
+  local min_vals max_vals
+  min_vals="$(echo "${min_line}" | sed -E 's/.*\[(.*)\].*/\1/' | tr -d ' ')"
+  max_vals="$(echo "${max_line}" | sed -E 's/.*\[(.*)\].*/\1/' | tr -d ' ')"
+
+  local min_x min_y max_x max_y
+  min_x="$(echo "${min_vals}" | cut -d',' -f1)"
+  min_y="$(echo "${min_vals}" | cut -d',' -f2)"
+  max_x="$(echo "${max_vals}" | cut -d',' -f1)"
+  max_y="$(echo "${max_vals}" | cut -d',' -f2)"
+  if [[ -z "${min_x}" || -z "${min_y}" || -z "${max_x}" || -z "${max_y}" ]]; then
+    return 1
+  fi
+
+  x_min_plot="$(awk -v v="${min_x}" 'BEGIN{printf "%.6f", v-5.0}')"
+  x_max_plot="$(awk -v v="${max_x}" 'BEGIN{printf "%.6f", v+5.0}')"
+  y_min_plot="$(awk -v v="${min_y}" 'BEGIN{printf "%.6f", v-5.0}')"
+  y_max_plot="$(awk -v v="${max_y}" 'BEGIN{printf "%.6f", v+5.0}')"
+  return 0
+}
+
 # Usage:
 #   ./run_tree_stack_realtime.sh [input_cloud_topic] [target_frame] [csv_out] [json_out] [snapshot_dir] [experiment_seed]
 #
@@ -39,6 +72,17 @@ experiment_seed="${6:-${EXPERIMENT_SEED:--1}}"
 tree_map_history_out="${TREE_MAP_HISTORY_CSV_OUT:-${default_data_dir}/tree_map_history.csv}"
 tree_detection_history_out="${TREE_DETECTION_HISTORY_CSV_OUT:-${default_data_dir}/tree_detection_history.csv}"
 run_id="${EXPERIMENT_RUN_ID:-}"
+planner_config_path="${EXPERIMENT_PLANNER_CONFIG:-}"
+
+x_min_plot=""
+x_max_plot=""
+y_min_plot=""
+y_max_plot=""
+if ! extract_xy_bounds_from_planner_config "${planner_config_path}"; then
+  echo "[tree_stack] error: failed to read boundary/min,max from EXPERIMENT_PLANNER_CONFIG='${planner_config_path}'" >&2
+  echo "[tree_stack] expected a valid YAML with boundary/min and boundary/max for fixed tree plot axes." >&2
+  exit 1
+fi
 
 mkdir -p "$(dirname "${csv_out}")"
 mkdir -p "$(dirname "${json_out}")"
@@ -54,6 +98,8 @@ echo "[tree_stack] tree_map_history_out=${tree_map_history_out}"
 echo "[tree_stack] tree_detection_history_out=${tree_detection_history_out}"
 echo "[tree_stack] snapshot_dir=${snapshot_dir}"
 echo "[tree_stack] experiment_seed=${experiment_seed}"
+echo "[tree_stack] planner_config=${planner_config_path}"
+echo "[tree_stack] plot_bounds_xy_plus5: x=[${x_min_plot}, ${x_max_plot}] y=[${y_min_plot}, ${y_max_plot}]"
 if [[ -n "${run_id}" ]]; then
   echo "[tree_stack] run_id=${run_id}"
 fi
@@ -74,5 +120,5 @@ roslaunch tree_identifier tree_stack.launch \
   detector_history_csv_output_path:="${tree_detection_history_out}" \
   cluster_plotter_snapshot_dir:="${snapshot_dir}" \
   fixed_axes:=true \
-  x_min:=-10 x_max:=10 \
-  y_min:=-8 y_max:=7
+  x_min:="${x_min_plot}" x_max:="${x_max_plot}" \
+  y_min:="${y_min_plot}" y_max:="${y_max_plot}"

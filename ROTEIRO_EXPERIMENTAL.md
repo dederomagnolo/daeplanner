@@ -2,7 +2,7 @@
 
 ### 1) Iniciar uma run (gera ID + pastas)
 ```bash
-./daep/experiment_run.sh init --name baseline --seed k
+./experiment_run.sh init --name baseline --seed k
 ```
 
 Isso cria:
@@ -21,21 +21,21 @@ O contexto ativo da run fica em:
 
 ### 2) Rodar exploração + tree stack (em terminais separados)
 ```bash
-./daep/simulation.sh world_jean
-./daep/exploration.sh world_jean_exploration.yaml k 2000
-./daep/run_tree_stack_realtime.sh /camera/depth/points world
+./simulation.sh world_jean
+./exploration.sh world_jean_exploration.yaml k 2000
+./run_tree_stack_realtime.sh /camera/depth/points world
 ```
 
 Com o contexto ativo, os outputs vao automaticamente para a pasta da run, incluindo `data/rrt_tree_log.csv` e `data/rrt_goal_log.csv`.
 
 ### 3) Snapshot manual a qualquer momento
 ```bash
-./daep/experiment_run.sh snapshot
+./experiment_run.sh snapshot
 ```
 
 Ou com tag custom:
 ```bash
-./daep/experiment_run.sh snapshot --tag snapshot_t1200
+./experiment_run.sh snapshot --tag snapshot_t1200
 ```
 
 Os snapshots manuais são salvos em:
@@ -44,22 +44,22 @@ Os snapshots manuais são salvos em:
 ### 3.1) Snapshot periódico (ex.: a cada 10 minutos)
 Iniciar em background:
 ```bash
-./daep/experiment_run.sh autosnapshot start --interval-sec 600
+./experiment_run.sh autosnapshot start --interval-sec 600
 ```
 
 Ver status:
 ```bash
-./daep/experiment_run.sh autosnapshot status
+./experiment_run.sh autosnapshot status
 ```
 
 Parar:
 ```bash
-./daep/experiment_run.sh autosnapshot stop
+./experiment_run.sh autosnapshot stop
 ```
 
 ### 4) Fechar experimento (salva octomap primeiro + gera relatório final)
 ```bash
-./daep/experiment_run.sh finalize
+./experiment_run.sh finalize
 ```
 
 Fluxo do `finalize`:
@@ -70,10 +70,10 @@ Fluxo do `finalize`:
 
 ### 5) Verificar run ativa
 ```bash
-./daep/experiment_run.sh status
+./experiment_run.sh status
 ```
 
 ### 6) Reativar uma run antiga
 ```bash
-./daep/experiment_run.sh use --id <run_id>
+./experiment_run.sh use --id <run_id>
 ```

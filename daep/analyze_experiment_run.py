@@ -37,10 +37,6 @@ def _script_path():
     )
 
 
-def _default_world():
-    return _repo_root() / "daep" / "catkin_ws" / "src" / "drone_gazebo" / "worlds" / "world_jean.world"
-
-
 def _load_ground_truth_parser():
     path = _script_path()
     spec = importlib.util.spec_from_file_location("world_tree_ground_truth_plotter", str(path))
@@ -790,7 +786,7 @@ def parse_limits(text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True, help="Experiment run directory under daep/experimentos/runs")
-    parser.add_argument("--world", default=str(_default_world()), help="Gazebo world used for ground truth")
+    parser.add_argument("--world", required=True, help="Gazebo world used for ground truth (required, no inference).")
     parser.add_argument("--output-dir", default=None, help="Default: <run-dir>/result")
     parser.add_argument("--match-threshold", type=float, default=DEFAULT_MATCH_THRESHOLD_M)
     parser.add_argument("--uri-filter", default="tree")

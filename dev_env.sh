@@ -30,6 +30,17 @@ if [[ "$COMMAND" = "build" ]]; then
 fi
 
 if [[ "$COMMAND" = "start" ]]; then
+    # WSLg support: forward Wayland/X11 sockets and runtime dir when available.
+    WSLG_ARGS=()
+    if [[ -d /mnt/wslg ]]; then
+      WSLG_ARGS+=(
+        --volume=/mnt/wslg:/mnt/wslg
+        --env=WAYLAND_DISPLAY="$WAYLAND_DISPLAY"
+        --env=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+        --env=PULSE_SERVER="$PULSE_SERVER"
+      )
+    fi
+
     docker run -it \
       --rm \
       --name "$CONTAINER_NAME" \
@@ -37,10 +48,14 @@ if [[ "$COMMAND" = "start" ]]; then
       --volume="$(pwd)/$IMAGE:/home/$IMAGE" \
       --workdir="/home/$IMAGE" \
       --env HOME="/home/$IMAGE" \
+      --gpus all \
       --env DISPLAY="$DISPLAY" \
       --privileged \
+      --env=NVIDIA_VISIBLE_DEVICES=all \
+      --env=NVIDIA_DRIVER_CAPABILITIES=all \
       --env=QT_X11_NO_MITSHM=1 \
       --net host \
+      "${WSLG_ARGS[@]}" \
       "$IMAGE_NAME" /bin/bash \
       $EXTRA 
     exit 0

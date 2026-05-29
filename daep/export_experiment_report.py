@@ -72,7 +72,7 @@ def register_input_file(src: Path, manifest: Dict[str, dict], key: str) -> Optio
 
 
 def default_ground_truth_csv() -> Path:
-    return Path(__file__).resolve().parent / "ground_truth" / "world_tree_ground_truth.csv"
+    return Path(__file__).resolve().parent / "ground_truth" / "world_jean.csv"
 
 
 def load_truth(csv_path: Path) -> List[dict]:
@@ -262,6 +262,45 @@ def load_config_xy_bbox(planner_config_path: Path) -> Optional[dict]:
     if not min_xy or not max_xy:
         return None
     return make_xy_box(min_xy[0], max_xy[0], min_xy[1], max_xy[1])
+
+
+def resolve_ground_truth_csv(script_dir: Path, world_name: str, explicit_csv: str) -> Path:
+    if explicit_csv.strip():
+        return Path(explicit_csv).expanduser().resolve()
+    return (script_dir / "ground_truth" / "{}.csv".format(world_name)).resolve()
+
+
+def auto_xy_limits(
+    truth_rows: List[dict],
+    map_rows: List[dict],
+    goals: List[dict],
+    config_bbox: Optional[dict],
+    x_min_arg: Optional[float],
+    x_max_arg: Optional[float],
+    y_min_arg: Optional[float],
+    y_max_arg: Optional[float],
+) -> Tuple[float, float, float, float]:
+    if None not in (x_min_arg, x_max_arg, y_min_arg, y_max_arg):
+        x0 = float(x_min_arg)
+        x1 = float(x_max_arg)
+        y0 = float(y_min_arg)
+        y1 = float(y_max_arg)
+        if x1 > x0 and y1 > y0:
+            return x0, x1, y0, y1
+
+    if not config_bbox:
+        raise RuntimeError(
+            "Missing planner boundary for automatic limits. "
+            "Provide --x-min/--x-max/--y-min/--y-max or valid --planner-config."
+        )
+
+    margin_xy_m = 5.0
+    return (
+        float(config_bbox["x_min"]) - margin_xy_m,
+        float(config_bbox["x_max"]) + margin_xy_m,
+        float(config_bbox["y_min"]) - margin_xy_m,
+        float(config_bbox["y_max"]) + margin_xy_m,
+    )
 
 
 def path_stats(
@@ -1694,11 +1733,12 @@ def main() -> int:
     parser.add_argument("--runtime-snapshots-dir", default="", help="Directory containing manual/autosnapshot folders.")
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
     parser.add_argument("--planner-config", default=str(default_planner_config), help="Planner YAML with boundary/min and boundary/max.")
-    parser.add_argument("--ground-truth-csv", default=str(default_ground_truth_csv()), help="Shared fixed tree ground-truth CSV.")
-    parser.add_argument("--x-min", type=float, default=-10.0)
-    parser.add_argument("--x-max", type=float, default=10.0)
-    parser.add_argument("--y-min", type=float, default=-8.0)
-    parser.add_argument("--y-max", type=float, default=7.0)
+    parser.add_argument("--world-name", required=True, help="World name used by this run (required, no inference).")
+    parser.add_argument("--ground-truth-csv", default="", help="Ground-truth CSV path. If empty, uses daep/ground_truth/<world-name>.csv.")
+    parser.add_argument("--x-min", type=float, default=None, help="Optional fixed X min. If omitted, auto-fit.")
+    parser.add_argument("--x-max", type=float, default=None, help="Optional fixed X max. If omitted, auto-fit.")
+    parser.add_argument("--y-min", type=float, default=None, help="Optional fixed Y min. If omitted, auto-fit.")
+    parser.add_argument("--y-max", type=float, default=None, help="Optional fixed Y max. If omitted, auto-fit.")
     parser.add_argument("--match-threshold", type=float, default=0.5, help="1:1 matching distance threshold (meters).")
     parser.add_argument(
         "--ground-truth-diameter-m",
@@ -1761,13 +1801,13 @@ def main() -> int:
     planner_config_path = Path(args.planner_config).expanduser().resolve()
     ti_scripts_dir = Path(args.tree_identifier_scripts_dir).expanduser().resolve()
     pkl_svg_plotter = Path(args.pkl_svg_plotter).expanduser().resolve()
-    ground_truth_csv_path = Path(args.ground_truth_csv).expanduser().resolve()
 
     manifest = {
         "experiment_name": exp_name,
         "generated_at_iso": dt.datetime.now().isoformat(),
         "copy_inputs": bool(args.copy_inputs),
         "detected_run_dir": str(detected_run_dir) if detected_run_dir else "",
+        "world_name": "",
         "inputs": {},
         "input_dirs": {
             "data_dir": str(data_dir),
@@ -1843,11 +1883,19 @@ def main() -> int:
     rrt_goal_log_path = (exp_dir / "rrt_goal_log.csv") if args.copy_inputs else (data_dir / "rrt_goal_log.csv")
     pkl_input_path = (exp_dir / latest_pkl.name) if (args.copy_inputs and latest_pkl) else latest_pkl
 
+    world_name = args.world_name.strip()
+    if not world_name:
+        print("Missing --world-name (no inference mode).", file=sys.stderr)
+        return 1
+    ground_truth_csv_path = resolve_ground_truth_csv(script_dir, world_name, args.ground_truth_csv)
+    manifest["world_name"] = world_name
+
     if not ground_truth_csv_path.exists():
         print("Missing ground-truth CSV: {}".format(ground_truth_csv_path), file=sys.stderr)
         return 1
 
     register_input_file(ground_truth_csv_path, manifest["inputs"], key="ground_truth_csv")
+    manifest["inputs"]["ground_truth_csv"]["world_name"] = world_name
 
     has_numpy = importlib.util.find_spec("numpy") is not None
 
@@ -1932,7 +1980,17 @@ def main() -> int:
             "Planner config boundary (boundary/min, boundary/max) not found; route plot will show only map limits."
         )
     goals = load_path_goals(path_csv_path)
-    route_stats = path_stats(goals, args.x_min, args.x_max, args.y_min, args.y_max, config_bbox=config_bbox)
+    plot_x_min, plot_x_max, plot_y_min, plot_y_max = auto_xy_limits(
+        truth_rows,
+        map_rows,
+        goals,
+        config_bbox,
+        args.x_min,
+        args.x_max,
+        args.y_min,
+        args.y_max,
+    )
+    route_stats = path_stats(goals, plot_x_min, plot_x_max, plot_y_min, plot_y_max, config_bbox=config_bbox)
     metrics["path_stats"] = route_stats
     if goals:
         route_svg = exp_dir / "route_trees_ground_truth.svg"
@@ -1942,10 +2000,10 @@ def main() -> int:
             map_rows,
             goals,
             "{}: route, detections and ground truth".format(exp_name),
-            args.x_min,
-            args.x_max,
-            args.y_min,
-            args.y_max,
+            plot_x_min,
+            plot_x_max,
+            plot_y_min,
+            plot_y_max,
             config_bbox=config_bbox,
         )
         route_paths = [route_svg]
@@ -1966,10 +2024,10 @@ def main() -> int:
                 rrt_tree_rows,
                 rrt_goal_rows,
                 "{}: sampled RRT trees".format(exp_name),
-                args.x_min,
-                args.x_max,
-                args.y_min,
-                args.y_max,
+                plot_x_min,
+                plot_x_max,
+                plot_y_min,
+                plot_y_max,
             )
             rrt_paths.append(rrt_samples_svg)
 

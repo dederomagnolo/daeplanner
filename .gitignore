@@ -18,6 +18,8 @@ aep_dep/.gazebo/
 aep_dep/octomaps
 
 #Trash files from daep
+daep/biomass-simulation-resources
+daep/gazebo_resources/
 daep/gazebo_models/
 daep/catkin_ws/build/
 daep/catkin_ws/devel/

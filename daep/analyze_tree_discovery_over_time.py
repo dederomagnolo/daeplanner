@@ -135,6 +135,7 @@ def load_run_meta(run_dir):
     meta["run_id"] = env.get("EXPERIMENT_RUN_ID", meta["run_id"])
     meta["experiment_name"] = env.get("EXPERIMENT_NAME", meta["experiment_name"])
     meta["seed"] = env.get("EXPERIMENT_SEED", meta["seed"])
+    meta["world_name"] = env.get("EXPERIMENT_WORLD_NAME", "")
     meta["created_wall_epoch"] = parse_created_wall_epoch(meta.get("created_at"))
     return meta
 
@@ -166,13 +167,18 @@ def load_truth_count(run_dir):
         except Exception:
             pass
 
-    truth_csv = run_dir / "result" / "world_jean_ground_truth.csv"
-    if truth_csv.exists():
-        try:
-            with truth_csv.open("r", newline="") as f:
-                return sum(1 for _ in csv.DictReader(f))
-        except Exception:
-            pass
+    meta = load_run_meta(run_dir)
+    world_name = str(meta.get("world_name") or "").strip()
+    if not world_name:
+        return None
+    truth_csv = repo_root() / "daep" / "ground_truth" / "{}.csv".format(world_name)
+    if not truth_csv.exists():
+        return None
+    try:
+        with truth_csv.open("r", newline="") as f:
+            return sum(1 for _ in csv.DictReader(f))
+    except Exception:
+        pass
 
     return None
 
