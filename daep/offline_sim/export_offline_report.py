@@ -16,15 +16,19 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+PARENT_DIR = SCRIPT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 
 from offline_explorer import load_point_cloud, load_simple_yaml  # noqa: E402
+from ground_truth_utils import load_ground_truth_rows, resolve_ground_truth_csv as resolve_canonical_ground_truth_csv  # noqa: E402
 
 
 Point2 = Tuple[float, float]
 
 
 def default_ground_truth_csv() -> Path:
-    return SCRIPT_DIR.parent / "ground_truth" / "world_tree_ground_truth.csv"
+    return resolve_canonical_ground_truth_csv("world_jean")
 
 
 def read_csv(path: Path) -> List[dict]:
@@ -127,32 +131,7 @@ def load_rrt_tree_rows(tree_log_path: Path) -> Dict[int, List[dict]]:
 
 
 def load_tree_positions_from_csv(csv_path: Path) -> List[dict]:
-    if not csv_path.exists():
-        raise FileNotFoundError("ground-truth CSV not found: {}".format(csv_path))
-
-    trees = []
-    for row in read_csv(csv_path):
-        tree_id_text = str(row.get("tree_id", "")).strip()
-        trees.append(
-            {
-                "tree_id": as_int(tree_id_text) if tree_id_text else None,
-                "name": str(row.get("name", "")).strip(),
-                "x": as_float(row.get("x")),
-                "y": as_float(row.get("y")),
-                "z": as_float(row.get("z")),
-                "roll": as_float(row.get("roll")),
-                "pitch": as_float(row.get("pitch")),
-                "yaw": as_float(row.get("yaw")),
-                "uri": str(row.get("uri", "")).strip(),
-                "raw_x": as_float(row.get("raw_x"), as_float(row.get("x"))),
-                "raw_y": as_float(row.get("raw_y"), as_float(row.get("y"))),
-                "offset_x_local": as_float(row.get("offset_x_local")),
-                "offset_y_local": as_float(row.get("offset_y_local")),
-                "offset_status": str(row.get("offset_status", "")).strip(),
-            }
-        )
-    trees.sort(key=lambda t: (t["tree_id"] is None, t["tree_id"] if t["tree_id"] is not None else 999999, t["name"]))
-    return trees
+    return load_ground_truth_rows(csv_path, trees_only=True)
 
 
 def path_length(points: Sequence[dict], start: Optional[Sequence[float]] = None) -> float:

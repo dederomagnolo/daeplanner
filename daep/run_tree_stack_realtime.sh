@@ -110,9 +110,6 @@ roslaunch tree_identifier tree_stack.launch \
   run_plotter:="${run_plotter}" \
   run_cluster_plotter:="${run_cluster_plotter}" \
   run_fuser:="${run_fuser}" \
-  tracker_use_array_input:=true \
-  fuser_use_array_input:=true \
-  detector_clustering_mode:=dbscan_gmm \
   experiment_seed:="${experiment_seed}" \
   fuser_csv_output_path:="${csv_out}" \
   fuser_json_output_path:="${json_out}" \

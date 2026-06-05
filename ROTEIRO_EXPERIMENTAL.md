@@ -22,6 +22,7 @@ O contexto ativo da run fica em:
 ### 2) Rodar exploração + tree stack (em terminais separados)
 ```bash
 ./simulation.sh world_jean
+./simulation.sh world_jean static "(-1.0,0.5,0.2)" false true
 ./exploration.sh world_jean_exploration.yaml k 2000
 ./run_tree_stack_realtime.sh /camera/depth/points world
 ```

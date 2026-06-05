@@ -34,6 +34,9 @@ class TreeDetectorNode(object):
     Main mode (default):
       slice by trunk height -> DBSCAN -> optional GMM split -> circle RANSAC
 
+    Alternate mode:
+      slice by trunk height -> DBSCAN -> optional GMM split -> circle RLTS
+
     Fallback mode:
       grid occupancy + connected components -> circle RANSAC
     """
@@ -48,9 +51,8 @@ class TreeDetectorNode(object):
         self.cluster_points_topic = rospy.get_param("~cluster_points_topic", "/tree_detector_cluster_points")
         self.cluster_labels_topic = rospy.get_param("~cluster_labels_topic", "/tree_detector_cluster_labels")
         self.detection_radius_topic = rospy.get_param("~detection_radius_topic", "/tree_detection_radii")
-        self.history_csv_output_path = os.path.abspath(
-            os.path.expanduser(rospy.get_param("~history_csv_output_path", ""))
-        ) if rospy.get_param("~history_csv_output_path", "") else ""
+        history_csv_output_path = rospy.get_param("~history_csv_output_path", "")
+        self.history_csv_output_path = self._normalize_optional_path(history_csv_output_path)
 
         self.slice_z_min = rospy.get_param("~slice_z_min", 1.15)
         self.slice_z_max = rospy.get_param("~slice_z_max", 1.45)
@@ -105,6 +107,9 @@ class TreeDetectorNode(object):
         if self.clustering_mode == "dbscan_gmm" and (not SKLEARN_AVAILABLE):
             rospy.logwarn("tree_detector_node: sklearn unavailable, forcing fallback to grid_cc")
             self.clustering_mode = "grid_cc"
+        elif self.clustering_mode == "dbscan_gmm_rlts" and (not SKLEARN_AVAILABLE):
+            rospy.logwarn("tree_detector_node: sklearn unavailable, forcing fallback to grid_cc")
+            self.clustering_mode = "grid_cc"
 
         rospy.loginfo(
             "tree_detector_node listening on %s (target_frame=%s mode=%s array_out=%s seed=%d gmm_seed=%d history=%s)",
@@ -124,6 +129,12 @@ class TreeDetectorNode(object):
         parent = os.path.dirname(path)
         if parent and not os.path.exists(parent):
             os.makedirs(parent)
+
+    @staticmethod
+    def _normalize_optional_path(path):
+        if not path:
+            return ""
+        return os.path.abspath(os.path.expanduser(path))
 
     @staticmethod
     def _stamp_sec(header):
@@ -273,6 +284,48 @@ class TreeDetectorNode(object):
         center, radius = best
         return float(center[0]), float(center[1]), float(radius), float(best_fit_error), float(inlier_ratio)
 
+    def _fit_circle_rlts(self, points_xy):
+        if points_xy.shape[0] < 5:
+            return None, None, None, None, None
+
+        centroid = np.mean(points_xy, axis=0)
+        distances = np.linalg.norm(points_xy - centroid, axis=1)
+        trim_threshold = np.percentile(distances, 75)
+        trimmed = points_xy[distances <= trim_threshold]
+        if trimmed.shape[0] < 3:
+            return None, None, None, None, None
+
+        x = trimmed[:, 0]
+        y = trimmed[:, 1]
+        a_mat = np.array([x, y, np.ones(len(x))]).T
+        b_vec = -(x**2 + y**2)
+
+        try:
+            params, _, _, _ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
+        except np.linalg.LinAlgError:
+            return None, None, None, None, None
+
+        d_term, e_term, f_term = params
+        center_x = -d_term / 2.0
+        center_y = -e_term / 2.0
+        radius_sq = center_x**2 + center_y**2 - f_term
+        if radius_sq <= 0.0:
+            return None, None, None, None, None
+
+        radius = float(np.sqrt(radius_sq))
+        diameter = 2.0 * radius
+        if np.isnan(radius) or diameter < self.min_diameter or diameter > self.max_diameter:
+            return None, None, None, None, None
+
+        residuals = np.abs(np.linalg.norm(points_xy - np.array([center_x, center_y]), axis=1) - radius)
+        fit_error = float(np.mean(residuals)) if residuals.size else None
+        inlier_mask = residuals < self.ransac_distance_threshold
+        inlier_ratio = float(np.sum(inlier_mask)) / float(max(points_xy.shape[0], 1))
+        if inlier_ratio < self.ransac_min_inlier_ratio:
+            return None, None, None, None, None
+
+        return float(center_x), float(center_y), radius, fit_error, inlier_ratio
+
     def _split_cluster_gmm(self, cluster_xy, global_indices):
         if (not self.enable_gmm_split) or (not SKLEARN_AVAILABLE):
             return [global_indices]
@@ -300,6 +353,42 @@ class TreeDetectorNode(object):
             dist_centers = float(np.linalg.norm(means[0] - means[1]))
             if dist_centers < self.gmm_min_center_dist:
                 return [global_indices]
+
+        out = []
+        for lb in sorted(set(labels.tolist())):
+            idx_local = np.where(labels == lb)[0]
+            if idx_local.shape[0] < self.min_cluster_points:
+                continue
+            out.append(global_indices[idx_local])
+
+        if len(out) < 2:
+            return [global_indices]
+        return out
+
+    def _split_cluster_gmm_rlts(self, cluster_xy, global_indices):
+        if (not self.enable_gmm_split) or (not SKLEARN_AVAILABLE):
+            return [global_indices]
+        if cluster_xy.shape[0] < self.gmm_min_points:
+            return [global_indices]
+        if self.gmm_components < 2:
+            return [global_indices]
+
+        pairwise_max_dist = 0.0
+        if cluster_xy.shape[0] >= 2:
+            diff = cluster_xy[:, None, :] - cluster_xy[None, :, :]
+            pairwise_max_dist = float(np.max(np.linalg.norm(diff, axis=2)))
+        if pairwise_max_dist <= 0.45:
+            return [global_indices]
+
+        try:
+            model = GaussianMixture(
+                n_components=int(self.gmm_components),
+                covariance_type="full",
+                random_state=int(self.gmm_random_state),
+            )
+            labels = model.fit_predict(cluster_xy)
+        except Exception:
+            return [global_indices]
 
         out = []
         for lb in sorted(set(labels.tolist())):
@@ -382,6 +471,62 @@ class TreeDetectorNode(object):
                     debug_cluster_labels.append(int(debug_cluster_id))
 
                 cx, cy, r, fit_error, inlier_ratio = self._fit_circle_ransac(cluster_points[:, :2])
+                if r is not None:
+                    z = float(np.mean(cluster_points[:, 2]))
+                    detections.append(
+                        {
+                            "x": cx,
+                            "y": cy,
+                            "z": z,
+                            "radius": float(r),
+                            "diameter": float(2.0 * r),
+                            "cluster_label": int(debug_cluster_id),
+                            "cluster_points": int(cluster_points.shape[0]),
+                            "fit_error": float(fit_error),
+                            "confidence": self._confidence(inlier_ratio, fit_error),
+                        }
+                    )
+
+                debug_cluster_id += 1
+
+        return detections, debug_cluster_points, debug_cluster_labels
+
+    def _detect_dbscan_gmm_rlts(self, trunk):
+        xy = trunk[:, :2]
+        try:
+            labels = DBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples).fit_predict(xy)
+        except Exception as exc:
+            rospy.logwarn_throttle(2.0, "tree_detector_node DBSCAN failed: %s", exc)
+            return [], [], []
+
+        detections = []
+        debug_cluster_points = []
+        debug_cluster_labels = []
+        debug_cluster_id = 0
+
+        unique_labels = sorted(set(labels.tolist()))
+        for lb in unique_labels:
+            if lb < 0:
+                continue
+
+            cluster_idx = np.where(labels == lb)[0]
+            if cluster_idx.shape[0] < self.min_cluster_points:
+                continue
+
+            split_groups = self._split_cluster_gmm_rlts(xy[cluster_idx], cluster_idx)
+            for sub_idx in split_groups:
+                if sub_idx.shape[0] < 5:
+                    continue
+
+                cluster_points = trunk[sub_idx]
+                if cluster_points.shape[0] < 5:
+                    continue
+
+                for p in cluster_points:
+                    debug_cluster_points.append((float(p[0]), float(p[1]), float(p[2])))
+                    debug_cluster_labels.append(int(debug_cluster_id))
+
+                cx, cy, r, fit_error, inlier_ratio = self._fit_circle_rlts(cluster_points[:, :2])
                 if r is not None:
                     z = float(np.mean(cluster_points[:, 2]))
                     detections.append(
@@ -588,6 +733,8 @@ class TreeDetectorNode(object):
 
         if self.clustering_mode == "dbscan_gmm":
             detections, cluster_points, cluster_labels = self._detect_dbscan_gmm(trunk)
+        elif self.clustering_mode == "dbscan_gmm_rlts":
+            detections, cluster_points, cluster_labels = self._detect_dbscan_gmm_rlts(trunk)
         else:
             detections, cluster_points, cluster_labels = self._detect_grid_cc(trunk)
 

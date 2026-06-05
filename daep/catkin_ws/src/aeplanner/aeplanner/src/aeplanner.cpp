@@ -1,6 +1,7 @@
 #include <aeplanner/aeplanner.h>
 #include <tf2/utils.h>
 #include <cstdlib>
+#include <cmath>
 #include <iomanip>
 
 namespace aeplanner
@@ -789,8 +790,13 @@ std::pair<RRTNode*, bool> AEPlanner::pathIsSafe(RRTNode* node,
 
 void AEPlanner::reevaluatePotentialInformationGainRecursive(RRTNode* node)
 {
+  if (!node)
+  {
+    ROS_WARN_THROTTLE(2.0, "reevaluatePotentialInformationGainRecursive received null node.");
+    return;
+  }
 
- std::tuple<double, double, double> ret = gainCubature(node->state_, node->time_cost());
+  std::tuple<double, double, double> ret = gainCubature(node->state_, node->time_cost());
   node->gain_ = std::get<0>(ret); // Assign static gain
   node->dynamic_gain_ = std::get<1>(ret); //Assign dynamic gain
   node->state_[3] = std::get<2>(ret); // Assign yaw angle that maximizes static gain
@@ -809,7 +815,14 @@ void AEPlanner::reevaluatePotentialInformationGainRecursive(RRTNode* node)
 
   for (typename std::vector<RRTNode*>::iterator node_it = node->children_.begin();
        node_it != node->children_.end(); ++node_it)
+  {
+    if (!(*node_it))
+    {
+      ROS_WARN_THROTTLE(2.0, "Skipping null child node during recursive reevaluation.");
+      continue;
+    }
     reevaluatePotentialInformationGainRecursive(*node_it);
+  }
 }
 
 
@@ -1107,6 +1120,16 @@ bool AEPlanner::reevaluate(aeplanner::Reevaluate::Request& req,
   for (std::vector<geometry_msgs::Point>::iterator it = req.points.begin();
        it != req.points.end(); ++it)
   {
+    if (!std::isfinite(it->x) || !std::isfinite(it->y) || !std::isfinite(it->z))
+    {
+      ROS_WARN_STREAM("Skipping reevaluate point with non-finite value: "
+                      << it->x << ", " << it->y << ", " << it->z);
+      res.gain.push_back(0.0);
+      res.dynamic_gain.push_back(0.0);
+      res.yaw.push_back(0.0);
+      continue;
+    }
+
     Eigen::Vector4d pos(it->x, it->y, it->z, 0);
 
     //Compute the current gain in each cached node
@@ -1128,6 +1151,12 @@ bool AEPlanner::reevaluate(aeplanner::Reevaluate::Request& req,
  */
 std::tuple <double, double, double> AEPlanner::gainCubature(Eigen::Vector4d state, double time_of_arrival)
 {
+  if (!std::isfinite(state[0]) || !std::isfinite(state[1]) || !std::isfinite(state[2]) || !std::isfinite(state[3]))
+  {
+    ROS_WARN_THROTTLE(2.0, "gainCubature received non-finite state. Returning zero gain.");
+    return std::make_tuple(0.0, 0.0, 0.0);
+  }
+
   visualization_msgs::MarkerArray static_rays;
   visualization_msgs::MarkerArray dynamic_rays;
 

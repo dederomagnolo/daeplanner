@@ -44,7 +44,6 @@ catkin_install_python(PROGRAMS
   scripts/tree_map_fuser.py
   scripts/tree_map_csv_plotter.py
   scripts/tree_cluster_pkl_plotter.py
-  scripts/world_tree_ground_truth_plotter.py
   scripts/world_tree_compare_plotter.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

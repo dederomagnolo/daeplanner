@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from ground_truth_utils import load_ground_truth_rows, resolve_ground_truth_csv as resolve_canonical_ground_truth_csv
+
 
 def run_cmd(cmd: Sequence[str], cwd: Optional[Path] = None) -> str:
     proc = subprocess.run(
@@ -71,25 +73,15 @@ def register_input_file(src: Path, manifest: Dict[str, dict], key: str) -> Optio
     return src
 
 
-def default_ground_truth_csv() -> Path:
-    return Path(__file__).resolve().parent / "ground_truth" / "world_jean.csv"
-
-
 def load_truth(csv_path: Path) -> List[dict]:
-    rows = []
-    with csv_path.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            tree_id = row.get("tree_id", "").strip()
-            rows.append(
-                {
-                    "tree_id": int(tree_id) if tree_id else None,
-                    "x": float(row["x"]),
-                    "y": float(row["y"]),
-                }
-            )
-    rows.sort(key=lambda d: (d["tree_id"] is None, d["tree_id"] or 999999))
-    return rows
+    return [
+        {
+            "tree_id": row.get("tree_id"),
+            "x": float(row["x"]),
+            "y": float(row["y"]),
+        }
+        for row in load_ground_truth_rows(csv_path, trees_only=True)
+    ]
 
 
 def write_ground_truth_svg(path: Path, truth: List[dict], title: str, x_min: float, x_max: float, y_min: float, y_max: float) -> None:
@@ -265,9 +257,8 @@ def load_config_xy_bbox(planner_config_path: Path) -> Optional[dict]:
 
 
 def resolve_ground_truth_csv(script_dir: Path, world_name: str, explicit_csv: str) -> Path:
-    if explicit_csv.strip():
-        return Path(explicit_csv).expanduser().resolve()
-    return (script_dir / "ground_truth" / "{}.csv".format(world_name)).resolve()
+    del script_dir
+    return resolve_canonical_ground_truth_csv(world_name, explicit_csv)
 
 
 def auto_xy_limits(
@@ -1734,7 +1725,11 @@ def main() -> int:
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
     parser.add_argument("--planner-config", default=str(default_planner_config), help="Planner YAML with boundary/min and boundary/max.")
     parser.add_argument("--world-name", required=True, help="World name used by this run (required, no inference).")
-    parser.add_argument("--ground-truth-csv", default="", help="Ground-truth CSV path. If empty, uses daep/ground_truth/<world-name>.csv.")
+    parser.add_argument(
+        "--ground-truth-csv",
+        default="",
+        help="Ground-truth CSV path. If empty, uses external/biomass-simulation-resources/ground_truth for the selected world.",
+    )
     parser.add_argument("--x-min", type=float, default=None, help="Optional fixed X min. If omitted, auto-fit.")
     parser.add_argument("--x-max", type=float, default=None, help="Optional fixed X max. If omitted, auto-fit.")
     parser.add_argument("--y-min", type=float, default=None, help="Optional fixed Y min. If omitted, auto-fit.")

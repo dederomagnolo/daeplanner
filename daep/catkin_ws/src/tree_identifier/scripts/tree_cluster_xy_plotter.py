@@ -37,6 +37,8 @@ class TreeClusterXYPlotter(object):
         self.x_max = rospy.get_param("~x_max", 10.0)
         self.y_min = rospy.get_param("~y_min", -8.0)
         self.y_max = rospy.get_param("~y_max", 7.0)
+        self.axis_margin = float(rospy.get_param("~axis_margin", 5.0))
+        self.use_boundary_bounds = rospy.get_param("~use_boundary_bounds", True)
         self.tick_step = rospy.get_param("~tick_step", 5.0)
 
         self.cluster_point_size = rospy.get_param("~cluster_point_size", 12.0)
@@ -151,6 +153,7 @@ class TreeClusterXYPlotter(object):
                 bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.68),
             )
 
+        self._apply_boundary_bounds_if_available()
         self._configure_axes()
 
         rospy.loginfo(
@@ -176,6 +179,15 @@ class TreeClusterXYPlotter(object):
             str(self.snapshot_history),
             int(self.max_history_points),
         )
+        if self.fixed_axes:
+            rospy.loginfo(
+                "tree_cluster_xy_plotter fixed axes: x=[%.2f, %.2f] y=[%.2f, %.2f] margin=%.2f",
+                self.x_min,
+                self.x_max,
+                self.y_min,
+                self.y_max,
+                self.axis_margin,
+            )
 
         self.anim = FuncAnimation(self.fig, self.update_plot, interval=self.refresh_ms)
 
@@ -219,6 +231,30 @@ class TreeClusterXYPlotter(object):
                 y += self.tick_step
             self.ax.set_xticks(xs)
             self.ax.set_yticks(ys)
+
+    def _apply_boundary_bounds_if_available(self):
+        if not self.fixed_axes or not self.use_boundary_bounds:
+            return
+        try:
+            bmin = rospy.get_param("boundary/min")
+            bmax = rospy.get_param("boundary/max")
+        except KeyError:
+            return
+        if not isinstance(bmin, list) or not isinstance(bmax, list):
+            return
+        if len(bmin) < 2 or len(bmax) < 2:
+            return
+        try:
+            bx0 = float(bmin[0])
+            by0 = float(bmin[1])
+            bx1 = float(bmax[0])
+            by1 = float(bmax[1])
+        except (TypeError, ValueError):
+            return
+        self.x_min = bx0 - self.axis_margin
+        self.x_max = bx1 + self.axis_margin
+        self.y_min = by0 - self.axis_margin
+        self.y_max = by1 + self.axis_margin
 
     @staticmethod
     def _align_labels(n_points, labels):

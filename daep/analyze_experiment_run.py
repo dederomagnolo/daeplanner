@@ -2,49 +2,23 @@
 
 """Generate lightweight tree-guidance diagnostics for one experiment run.
 
-The script intentionally reads only compact runtime products (CSV/JSON/world).
-It does not load octomaps, PKL cluster states, point clouds, or ROS bags.
+The script intentionally reads only compact runtime products (CSV/JSON).
+It does not load octomaps, PKL cluster states, point clouds, ROS bags, or
+parse Gazebo worlds for ground truth.
 """
 
 import argparse
 import csv
-import importlib.util
 import json
 import math
-import os
 import re
-import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from ground_truth_utils import load_ground_truth_rows, resolve_ground_truth_csv
+
 
 DEFAULT_MATCH_THRESHOLD_M = 0.60
-
-
-def _repo_root():
-    return Path(__file__).resolve().parents[1]
-
-
-def _script_path():
-    return (
-        _repo_root()
-        / "daep"
-        / "catkin_ws"
-        / "src"
-        / "tree_identifier"
-        / "scripts"
-        / "world_tree_ground_truth_plotter.py"
-    )
-
-
-def _load_ground_truth_parser():
-    path = _script_path()
-    spec = importlib.util.spec_from_file_location("world_tree_ground_truth_plotter", str(path))
-    if spec is None or spec.loader is None:
-        raise RuntimeError("failed to import {}".format(path))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _float(value, default=None):
@@ -184,25 +158,17 @@ def _point_key(x, y, z=0.0):
     return (round(float(x), 3), round(float(y), 3), round(float(z), 3))
 
 
-def load_truth(world_path, uri_filter, apply_mesh_offset, model_root, ground_band_z):
-    parser = _load_ground_truth_parser()
-    trees = parser.parse_world_trees(
-        str(world_path),
-        uri_filter=uri_filter,
-        apply_mesh_offset=apply_mesh_offset,
-        model_root=str(model_root),
-        ground_band_z=ground_band_z,
-    )
+def load_truth(csv_path):
     return [
         {
-            "tree_id": t.get("tree_id"),
-            "name": t.get("name") or "tree_{}".format(i + 1),
-            "x": float(t["x"]),
-            "y": float(t["y"]),
-            "z": float(t.get("z") or 0.0),
-            "raw": t,
+            "tree_id": row.get("tree_id"),
+            "name": row.get("name") or "tree_{}".format(i + 1),
+            "x": float(row["x"]),
+            "y": float(row["y"]),
+            "z": float(row.get("z") or 0.0),
+            "raw": row,
         }
-        for i, t in enumerate(trees)
+        for i, row in enumerate(load_ground_truth_rows(Path(csv_path), trees_only=True))
     ]
 
 
@@ -786,13 +752,14 @@ def parse_limits(text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True, help="Experiment run directory under daep/experimentos/runs")
-    parser.add_argument("--world", required=True, help="Gazebo world used for ground truth (required, no inference).")
+    parser.add_argument("--world-name", required=True, help="World name used by this run (required, no inference).")
+    parser.add_argument(
+        "--ground-truth-csv",
+        default="",
+        help="Ground-truth CSV path. If empty, uses external/biomass-simulation-resources/ground_truth for the selected world.",
+    )
     parser.add_argument("--output-dir", default=None, help="Default: <run-dir>/result")
     parser.add_argument("--match-threshold", type=float, default=DEFAULT_MATCH_THRESHOLD_M)
-    parser.add_argument("--uri-filter", default="tree")
-    parser.add_argument("--no-mesh-offset", action="store_true", help="Disable mesh-origin correction for ground truth")
-    parser.add_argument("--model-root", default=None)
-    parser.add_argument("--ground-band-z", type=float, default=0.05)
     parser.add_argument("--xlim", type=parse_limits, default=None, help="Optional fixed x axis: min,max")
     parser.add_argument("--ylim", type=parse_limits, default=None, help="Optional fixed y axis: min,max")
     args = parser.parse_args()
@@ -800,14 +767,13 @@ def main():
     run_dir = Path(args.run_dir).resolve()
     if not run_dir.exists():
         raise SystemExit("run dir does not exist: {}".format(run_dir))
-    world_path = Path(args.world).resolve()
-    if not world_path.exists():
-        raise SystemExit("world does not exist: {}".format(world_path))
     output_dir = Path(args.output_dir).resolve() if args.output_dir else run_dir / "result"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    model_root = Path(args.model_root).resolve() if args.model_root else world_path.parent.parent / "models"
-    truth = load_truth(world_path, args.uri_filter, not args.no_mesh_offset, model_root, args.ground_band_z)
+    truth_csv = resolve_ground_truth_csv(args.world_name, args.ground_truth_csv)
+    if not truth_csv.exists():
+        raise SystemExit("ground-truth CSV does not exist: {}".format(truth_csv))
+    truth = load_truth(truth_csv)
 
     final_map = run_dir / "data" / "tree_map_final.csv"
     if not final_map.exists():
@@ -843,7 +809,8 @@ def main():
 
     metrics = {
         "run_dir": str(run_dir),
-        "world": str(world_path),
+        "world_name": args.world_name,
+        "ground_truth_csv": str(truth_csv),
         "final_map": str(final_map),
         "final_path": str(final_path),
         "final_guidance": str(final_guidance),

@@ -135,7 +135,7 @@ def write_svg(truth_rows, map_rows, out_path, title, x_min, x_max, y_min, y_max)
 
 def main():
     parser = argparse.ArgumentParser(description="Compare world tree ground-truth with tree_map_fuser CSV.")
-    parser.add_argument("--truth-csv", required=True, help="CSV from world_tree_ground_truth_plotter.py")
+    parser.add_argument("--truth-csv", required=True, help="Canonical ground-truth CSV.")
     parser.add_argument("--map-csv", required=True, help="tree_map_final.csv path")
     parser.add_argument("--svg-out", required=True, help="Output overlay SVG")
     parser.add_argument("--title", default="Ground Truth vs Tree Map", help="SVG title")

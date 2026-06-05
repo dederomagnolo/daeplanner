@@ -25,6 +25,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
+PARENT_DIR = Path(__file__).resolve().parent.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
+
+from ground_truth_utils import load_ground_truth_rows, resolve_ground_truth_csv as resolve_canonical_ground_truth_csv
+
 
 Point3 = Tuple[float, float, float]
 State4 = Tuple[float, float, float, float]
@@ -156,14 +162,7 @@ def default_config_path() -> Path:
 
 
 def default_tree_ground_truth_csv() -> Path:
-    return first_existing_path(
-        [
-            SCRIPT_DIR.parent / "ground_truth" / "world_tree_ground_truth.csv",
-            Path.cwd() / "daep" / "ground_truth" / "world_tree_ground_truth.csv",
-            Path.cwd() / "ground_truth" / "world_tree_ground_truth.csv",
-            SCRIPT_DIR.parent / "daep" / "ground_truth" / "world_tree_ground_truth.csv",
-        ]
-    )
+    return resolve_canonical_ground_truth_csv("world_jean")
 
 
 def sanitize_run_name(name: str) -> str:
@@ -215,21 +214,18 @@ class TreeTruth:
 
 
 def load_tree_truth_csv(path: Path) -> List[TreeTruth]:
-    if not path.exists():
-        raise FileNotFoundError("tree ground-truth CSV not found: {}".format(path))
     trees: List[TreeTruth] = []
-    with path.open("r", newline="", encoding="utf-8") as f:
-        for idx, row in enumerate(csv.DictReader(f), start=1):
-            trees.append(
-                TreeTruth(
-                    index=idx,
-                    tree_id=as_optional_int(row.get("tree_id")),
-                    name=str(row.get("name", "")).strip(),
-                    x=as_float(row.get("x")),
-                    y=as_float(row.get("y")),
-                    z=as_float(row.get("z")),
-                )
+    for row in load_ground_truth_rows(path, trees_only=True):
+        trees.append(
+            TreeTruth(
+                index=int(row.get("index", len(trees) + 1)),
+                tree_id=row.get("tree_id"),
+                name=str(row.get("name", "")).strip(),
+                x=as_float(row.get("x")),
+                y=as_float(row.get("y")),
+                z=as_float(row.get("z")),
             )
+        )
     trees.sort(key=lambda t: (t.tree_id is None, t.tree_id if t.tree_id is not None else 999999, t.name))
     return trees
 

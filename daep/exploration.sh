@@ -112,7 +112,12 @@ save_octomap_with_seed_and_timestamp() {
 # Legacy behavior: no timeout => keep roslaunch in foreground.
 if [[ -z "$max_time_sec" ]]; then
   "${launch_cmd[@]}"
-  exit $?
+  launch_status=$?
+  # If launch exits cleanly (including natural completion), persist octomap when possible.
+  if [[ $launch_status -eq 0 ]]; then
+    save_octomap_with_seed_and_timestamp
+  fi
+  exit $launch_status
 fi
 
 if ! [[ "$max_time_sec" =~ ^[0-9]+$ ]] || (( max_time_sec <= 0 )); then

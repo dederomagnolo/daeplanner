@@ -128,15 +128,16 @@ save_octomap_now() {
   out_base="${EXPERIMENT_OCTOMAP_DIR}/octomap_${EXPERIMENT_RUN_ID}_${suffix}_${ts}"
   out_file="${out_base}.bt"
   mkdir -p "${EXPERIMENT_OCTOMAP_DIR}"
-  if ! topic_exists "${octomap_topic}"; then
-    echo "[finalize] octomap topic not found: ${octomap_topic}"
-    return 1
-  fi
-  if rosrun octomap_server octomap_saver -f "${out_file}" "octomap_full:=${octomap_topic}" >/dev/null \
-     && [[ -s "${out_file}" ]]; then
-    echo "[finalize] octomap saved: ${out_file}"
-    return 0
-  fi
+
+  local saver_cmd=(rosrun octomap_server octomap_saver -f "${out_file}" "octomap_full:=${octomap_topic}")
+  local attempt
+  for attempt in 1 2 3; do
+    if timeout 10s "${saver_cmd[@]}" >/dev/null && [[ -s "${out_file}" ]]; then
+      echo "[finalize] octomap saved: ${out_file}"
+      return 0
+    fi
+    echo "[finalize] octomap save failed (try ${attempt}/3)" >&2
+  done
   echo "[finalize] failed to save octomap: ${out_file}" >&2
   return 1
 }

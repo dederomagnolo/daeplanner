@@ -58,13 +58,6 @@ class TreeIdTracker(object):
             rospy.loginfo("tree_id_tracker listening on %s (legacy mode)", self.input_topic)
 
     @staticmethod
-    def _dist_sq_xyz(a, b):
-        dx = a[0] - b[0]
-        dy = a[1] - b[1]
-        dz = a[2] - b[2]
-        return dx * dx + dy * dy + dz * dz
-
-    @staticmethod
     def _linear_sum_assignment(cost):
         """
         Hungarian algorithm for rectangular cost matrix.

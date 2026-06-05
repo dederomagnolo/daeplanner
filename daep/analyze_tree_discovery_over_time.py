@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from ground_truth_utils import load_ground_truth_rows, resolve_ground_truth_csv
+
 
 PALETTE = [
     "#1f77b4",
@@ -171,15 +173,11 @@ def load_truth_count(run_dir):
     world_name = str(meta.get("world_name") or "").strip()
     if not world_name:
         return None
-    truth_csv = repo_root() / "daep" / "ground_truth" / "{}.csv".format(world_name)
-    if not truth_csv.exists():
-        return None
     try:
-        with truth_csv.open("r", newline="") as f:
-            return sum(1 for _ in csv.DictReader(f))
+        truth_csv = resolve_ground_truth_csv(world_name)
+        return len(load_ground_truth_rows(truth_csv, trees_only=True))
     except Exception:
-        pass
-
+        return None
     return None
 
 
