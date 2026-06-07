@@ -756,7 +756,7 @@ def main():
     parser.add_argument(
         "--ground-truth-csv",
         default="",
-        help="Ground-truth CSV path. If empty, uses external/biomass-simulation-resources/ground_truth for the selected world.",
+        help="Ground-truth CSV path. If empty, uses catkin_ws/src/biomass-simulation-resources/ground_truth for the selected world.",
     )
     parser.add_argument("--output-dir", default=None, help="Default: <run-dir>/result")
     parser.add_argument("--match-threshold", type=float, default=DEFAULT_MATCH_THRESHOLD_M)

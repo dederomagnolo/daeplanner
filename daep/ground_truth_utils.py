@@ -2,19 +2,22 @@
 
 """Helpers to resolve and read canonical ground-truth CSV files."""
 
-from __future__ import annotations
-
 import csv
 from pathlib import Path
 from typing import Dict, List, Optional
 
 
 def workspace_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    here = Path(__file__).resolve().parent
+    candidates = [here, here.parent]
+    for candidate in candidates:
+        if (candidate / "catkin_ws" / "src" / "biomass-simulation-resources").exists():
+            return candidate
+    return here
 
 
 def biomass_ground_truth_root() -> Path:
-    return workspace_root() / "external" / "biomass-simulation-resources" / "ground_truth"
+    return workspace_root() / "catkin_ws" / "src" / "biomass-simulation-resources" / "ground_truth"
 
 
 def _candidate_ground_truth_paths(world_name: str) -> List[Path]:

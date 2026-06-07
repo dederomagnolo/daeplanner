@@ -1728,7 +1728,7 @@ def main() -> int:
     parser.add_argument(
         "--ground-truth-csv",
         default="",
-        help="Ground-truth CSV path. If empty, uses external/biomass-simulation-resources/ground_truth for the selected world.",
+        help="Ground-truth CSV path. If empty, uses catkin_ws/src/biomass-simulation-resources/ground_truth for the selected world.",
     )
     parser.add_argument("--x-min", type=float, default=None, help="Optional fixed X min. If omitted, auto-fit.")
     parser.add_argument("--x-max", type=float, default=None, help="Optional fixed X max. If omitted, auto-fit.")
