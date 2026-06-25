@@ -194,7 +194,6 @@ def load_map(csv_path: Path) -> List[dict]:
                     "std_diameter": _get_float(row, "std_diameter"),
                     "confidence": _get_float(row, "confidence"),
                     "confirmed": _get_int(row, "confirmed"),
-                    "suspect_merge": _get_int(row, "suspect_merge"),
                 }
             )
     rows.sort(key=lambda d: d["map_id"])
@@ -740,7 +739,6 @@ def _diameter_stats(rows: List[dict], gt_diameter_m: float) -> dict:
     stats = {
         "population_count": len(rows),
         "confirmed_count": sum(int(r.get("confirmed", 0)) for r in rows),
-        "suspect_merge_count": sum(int(r.get("suspect_merge", 0)) for r in rows),
         "ground_truth_diameter_m": gt_diameter_m,
         "diameter_mean_m": None,
         "diameter_min_m": None,
@@ -973,7 +971,6 @@ def load_map_history(csv_path: Path) -> List[dict]:
                     "std_diameter": _get_float(row, "std_diameter"),
                     "confidence": _get_float(row, "confidence"),
                     "confirmed": _get_int(row, "confirmed"),
-                    "suspect_merge": _get_int(row, "suspect_merge"),
                 }
             )
 
@@ -1487,7 +1484,6 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
         lines_out.append("### {}".format(title))
         lines_out.append("- Populacao avaliada: {}".format(s.get("population_count", 0)))
         lines_out.append("- Confirmadas: {}".format(s.get("confirmed_count", 0)))
-        lines_out.append("- Suspeitas de merge: {}".format(s.get("suspect_merge_count", 0)))
         lines_out.append("- Diametro medio: {} m".format(_fmt_m(s.get("diameter_mean_m"))))
         lines_out.append(
             "- Diametro min/max: {} / {} m".format(

@@ -14,8 +14,8 @@ set -euo pipefail
 #
 # Environment overrides:
 #   EXPERIMENT_CONTEXT_FILE (default: /tmp/daeplanner_current_run.env)
-#   SNAPSHOT_TOPIC          (default: /tree_cluster_xy_plotter/save_snapshot)
-#   SNAPSHOT_DIR            (default: /home/daep/tree_snapshots)
+#   SNAPSHOT_SERVICE        (default: /tree_snapshot_exporter/export_snapshot)
+#   SNAPSHOT_DIR            (default: /home/daep/snapshots; fallback only when service export is unavailable)
 #   CSV_SOURCE              (explicit tree_map_final.csv path)
 #   JSON_SOURCE             (explicit tree_map_final.json path)
 #   EXPERIMENT_DATA_DIR     (preferred data directory)
@@ -57,6 +57,14 @@ copy_if_exists() {
   fi
 }
 
+latest_snapshot_png() {
+  local root_dir="$1"
+  find "${root_dir}" -maxdepth 2 -type f -name '*.png' -printf '%T@ %p\n' 2>/dev/null \
+    | sort -nr \
+    | head -n1 \
+    | cut -d' ' -f2-
+}
+
 cd
 source .bashrc
 load_experiment_context
@@ -69,8 +77,8 @@ fi
 output_root="${1:-${default_output_root}}"
 tag="${2:-snapshot_$(date +%Y%m%d_%H%M%S)}"
 
-snapshot_topic="${SNAPSHOT_TOPIC:-/tree_cluster_xy_plotter/save_snapshot}"
-snapshot_dir="${SNAPSHOT_DIR:-${EXPERIMENT_SNAPSHOT_DIR:-/home/daep/tree_snapshots}}"
+snapshot_service="${SNAPSHOT_SERVICE:-/tree_snapshot_exporter/export_snapshot}"
+snapshot_dir="${SNAPSHOT_DIR:-${EXPERIMENT_SNAPSHOT_DIR:-/home/daep/snapshots}}"
 octomap_topic="${OCTOMAP_TOPIC:-${EXPERIMENT_OCTOMAP_TOPIC:-/aeplanner/octomap_full}}"
 save_octomap="${SAVE_OCTOMAP:-true}"
 
@@ -84,7 +92,7 @@ if [[ -z "${json_source}" ]]; then
   json_source="$(pick_data_file tree_map_final.json)"
 fi
 
-extra_data_files="${EXTRA_DATA_FILES:-tree_map_history.csv tree_detection_history.csv tree_guidance_waypoints.csv coverage.csv path.csv logfile.csv intervals.csv collision.csv rrt_tree_log.csv rrt_goal_log.csv}"
+extra_data_files="${EXTRA_DATA_FILES:-tree_guidance_waypoints.csv coverage.csv path.csv logfile.csv intervals.csv collision.csv rrt_tree_log.csv rrt_goal_log.csv}"
 
 dest="${output_root}/${tag}"
 mkdir -p "${dest}"
@@ -94,44 +102,55 @@ topic_exists() {
   rostopic list 2>/dev/null | grep -Fxq "${topic_name}"
 }
 
+service_exists() {
+  local service_name="$1"
+  rosservice list 2>/dev/null | grep -Fxq "${service_name}"
+}
+
 echo "[save] destination=${dest}"
 
-if topic_exists "${snapshot_topic}"; then
-  rostopic pub -1 "${snapshot_topic}" std_msgs/Empty "{}" >/dev/null 2>&1 || true
-  sleep 1
-  echo "[save] snapshot requested on ${snapshot_topic}"
-else
-  echo "[warn] snapshot topic not found: ${snapshot_topic}"
+snapshot_exported="false"
+if service_exists "${snapshot_service}"; then
+  request_payload=$'output_dir: '"${dest}"$'\ntag: '"${tag}"$'\ninclude_history: true\ninclude_map_outputs: true'
+  service_output="$(rosservice call "${snapshot_service}" "${request_payload}" 2>&1 || true)"
+  if echo "${service_output}" | grep -Fq "success: True"; then
+    snapshot_exported="true"
+    echo "[save] snapshot exported via service: ${snapshot_service}"
+  else
+    echo "[warn] snapshot service failed: ${snapshot_service}"
+    echo "${service_output}"
+  fi
 fi
 
-latest_pkl="$(ls -1t "${snapshot_dir}"/*.pkl 2>/dev/null | head -n1 || true)"
-if [[ -n "${latest_pkl}" && -f "${latest_pkl}" ]]; then
-  cp "${latest_pkl}" "${dest}/"
-  echo "[save] copied $(basename "${latest_pkl}")"
-else
-  echo "[warn] no PKL found in ${snapshot_dir}"
+if [[ "${snapshot_exported}" != "true" ]]; then
+  echo "[warn] snapshot service not available: ${snapshot_service}"
 fi
 
-latest_png="$(ls -1t "${snapshot_dir}"/*.png 2>/dev/null | head -n1 || true)"
-if [[ -n "${latest_png}" && -f "${latest_png}" ]]; then
-  cp "${latest_png}" "${dest}/"
-  echo "[save] copied $(basename "${latest_png}")"
-else
-  echo "[warn] no PNG found in ${snapshot_dir}"
-fi
+if [[ "${snapshot_exported}" != "true" ]]; then
+  latest_png="$(latest_snapshot_png "${snapshot_dir}")"
+  if [[ -n "${latest_png}" && -f "${latest_png}" ]]; then
+    cp "${latest_png}" "${dest}/"
+    echo "[save] copied $(basename "${latest_png}")"
+  else
+    echo "[warn] no PNG found in ${snapshot_dir}"
+  fi
 
-if [[ -n "${csv_source}" && -f "${csv_source}" ]]; then
-  cp "${csv_source}" "${dest}/"
-  echo "[save] copied $(basename "${csv_source}")"
-else
-  echo "[warn] CSV not found: ${csv_source:-tree_map_final.csv}"
-fi
+  if [[ -n "${csv_source}" && -f "${csv_source}" ]]; then
+    cp "${csv_source}" "${dest}/"
+    echo "[save] copied $(basename "${csv_source}")"
+  else
+    echo "[warn] CSV not found: ${csv_source:-tree_map_final.csv}"
+  fi
 
-if [[ -n "${json_source}" && -f "${json_source}" ]]; then
-  cp "${json_source}" "${dest}/"
-  echo "[save] copied $(basename "${json_source}")"
-else
-  echo "[warn] JSON not found: ${json_source:-tree_map_final.json}"
+  if [[ -n "${json_source}" && -f "${json_source}" ]]; then
+    cp "${json_source}" "${dest}/"
+    echo "[save] copied $(basename "${json_source}")"
+  else
+    echo "[warn] JSON not found: ${json_source:-tree_map_final.json}"
+  fi
+
+  copy_if_exists "$(pick_data_file tree_map_history.csv)" "${dest}"
+  copy_if_exists "$(pick_data_file tree_detection_history.csv)" "${dest}"
 fi
 
 for file_name in ${extra_data_files}; do

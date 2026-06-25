@@ -11,7 +11,7 @@ system/bbx/overshoot: 0.25
 aep/gain/r_min: 0
 aep/gain/r_max: 6
 aep/gain/zero: 60
-aep/gain/lambda: 0.3
+aep/gain/lambda: 0.5
 aep/gain/sigma_thresh: 0.2
 aep/tree/extension_range: 1
 aep/tree/max_sampling_radius: 10

@@ -171,15 +171,12 @@ def read_tree_map_csv(path):
             rows = [dict(r) for r in csv.DictReader(f)]
 
     confirmed_count = 0
-    suspect_merge_count = 0
     time_candidates = []
     max_last_seen = None
 
     for row in rows:
         if boolish(row.get("confirmed")):
             confirmed_count += 1
-        if boolish(row.get("suspect_merge")):
-            suspect_merge_count += 1
 
         last_seen = float_or_none(row.get("last_seen_sec"))
         age = float_or_none(row.get("age_sec"))
@@ -193,7 +190,6 @@ def read_tree_map_csv(path):
         "total_count": len(rows),
         "confirmed_count": confirmed_count,
         "candidate_count": len(rows) - confirmed_count,
-        "suspect_merge_count": suspect_merge_count,
         "csv_time_sec": csv_time,
         "max_last_seen_sec": max_last_seen,
     }
@@ -322,7 +318,7 @@ def compress_points(points):
             by_time[key] = point
             continue
 
-        for count_key in ("total_count", "confirmed_count", "candidate_count", "suspect_merge_count"):
+        for count_key in ("total_count", "confirmed_count", "candidate_count"):
             prev[count_key] = max(int(prev.get(count_key, 0)), int(point.get(count_key, 0)))
         if point.get("source_kind") == "final":
             prev["source_kind"] = "final"
@@ -414,7 +410,6 @@ def make_summary(run, metric, target_count):
         "final_total_count": int(final.get("total_count", 0)) if final else 0,
         "final_confirmed_count": int(final.get("confirmed_count", 0)) if final else 0,
         "final_candidate_count": int(final.get("candidate_count", 0)) if final else 0,
-        "final_suspect_merge_count": int(final.get("suspect_merge_count", 0)) if final else 0,
         "final_metric_count": final_metric,
         "peak_total_count": max([int(p.get("cumulative_total_count", 0)) for p in points], default=0),
         "peak_confirmed_count": max([int(p.get("cumulative_confirmed_count", 0)) for p in points], default=0),
@@ -469,7 +464,6 @@ def write_timeseries_csv(path, runs, metric):
         "total_count",
         "confirmed_count",
         "candidate_count",
-        "suspect_merge_count",
         "cumulative_total_count",
         "cumulative_confirmed_count",
         "metric",
@@ -496,7 +490,6 @@ def write_timeseries_csv(path, runs, metric):
                         "total_count": point.get("total_count", 0),
                         "confirmed_count": point.get("confirmed_count", 0),
                         "candidate_count": point.get("candidate_count", 0),
-                        "suspect_merge_count": point.get("suspect_merge_count", 0),
                         "cumulative_total_count": point.get("cumulative_total_count", point.get("total_count", 0)),
                         "cumulative_confirmed_count": point.get("cumulative_confirmed_count", point.get("confirmed_count", 0)),
                         "metric": metric,
@@ -525,7 +518,6 @@ def write_summary_csv(path, summaries):
         "final_total_count",
         "final_confirmed_count",
         "final_candidate_count",
-        "final_suspect_merge_count",
         "final_metric_count",
         "peak_total_count",
         "peak_confirmed_count",

@@ -35,7 +35,6 @@ Por padrao, `result/` nao duplica os CSVs de `data/`; o `manifest.json` aponta q
 - **Tempo ate recall 50/80/100%**: rapidez da descoberta.
 - **AUC do recall acumulado**: qualidade temporal geral; maior significa descobrir cedo e manter bom recall.
 - **FP/FN**: falsos positivos e arvores reais nao encontradas.
-- **suspect_merge**: indica possivel fusao indevida de arvores diferentes.
 
 ## Como interpretar
 

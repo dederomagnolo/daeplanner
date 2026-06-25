@@ -80,7 +80,6 @@ def load_map(path):
                 "std_xy": _float(row.get(_first_key(row, ("std_xy", "std_position", "sigma_xy")))),
                 "confidence": _float(row.get(_first_key(row, ("confidence", "score", "probability")))),
                 "confirmed": _int_bool(row.get(_first_key(row, ("confirmed", "is_confirmed")))),
-                "suspect_merge": _int_bool(row.get(_first_key(row, ("suspect_merge", "merge", "is_merge")))),
                 "raw": row,
             }
         )
@@ -612,8 +611,6 @@ def write_overview_svg(path, truth, detections, path_points, guidance_points, ma
         else:
             fill, stroke = "#e69f2a", "#9a6411"
             opacity = 0.84
-        if det["suspect_merge"]:
-            stroke = "#d44"
         title = "map {} conf={} hits={} confirmed={} ({:.2f}, {:.2f})".format(
             det["map_id"], _confidence_label(conf), _fmt_float(det.get("hits"), digits=0), int(det["confirmed"]), det["x"], det["y"]
         )
