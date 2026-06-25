@@ -68,7 +68,7 @@ python3 daep/offline_sim/offline_explorer.py --run-name baseline-1-offline --see
 Use `--no-report` only when you want to skip report generation.
 
 The report reads tree ground-truth positions from the shared canonical CSV
-exported by `external/biomass-simulation-resources/ground_truth/`.
+exported by `catkin_ws/src/biomass-simulation-resources/ground_truth/`.
 
 The simulator also uses that CSV for offline tree-observation metrics when it
 is available. It runs an offline port of the tree detector over a synthetic
