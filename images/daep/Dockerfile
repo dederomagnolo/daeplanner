@@ -53,6 +53,9 @@ RUN apt-get update \
       ros-melodic-octomap-ros \
       ros-melodic-geographic-msgs \
       python-catkin-tools \
+      python-sklearn \
+      python3-pip \
+      python3-sklearn \
       mesa-utils \
       autoconf \
       automake \

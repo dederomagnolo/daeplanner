@@ -10,11 +10,9 @@ with copied raw files, generated plots, and a Markdown summary.
 import argparse
 import csv
 import datetime as dt
-import importlib.util
 import json
 import math
 import os
-import pickle
 import shutil
 import statistics as st
 import subprocess
@@ -44,6 +42,23 @@ def latest_file(directory: Path, pattern: str) -> Optional[Path]:
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def latest_existing_file(candidates: Sequence[Path]) -> Optional[Path]:
+    existing = [p for p in candidates if p.exists() and p.is_file()]
+    if not existing:
+        return None
+    return max(existing, key=lambda p: p.stat().st_mtime)
+
+
+def latest_snapshot_artifact(snapshot_root: Path, run_dir: Optional[Path], pattern: str) -> Optional[Path]:
+    candidates = []
+    if snapshot_root.exists() and snapshot_root.is_dir():
+        candidates.extend([p for p in snapshot_root.glob(pattern) if p.is_file()])
+        candidates.extend([p for p in snapshot_root.glob("*/" + pattern) if p.is_file()])
+    if run_dir and run_dir.exists() and run_dir.is_dir():
+        candidates.extend([p for p in run_dir.glob(pattern) if p.is_file()])
+    return latest_existing_file(candidates)
 
 
 def copy_file(src: Path, dst_dir: Path, manifest: Dict[str, dict], key: str) -> Optional[Path]:
@@ -1163,11 +1178,18 @@ def compute_snapshot_metrics(
             continue
 
         meta_json = snap_dir / "tree_map_final.json"
+        snapshot_meta_json = snap_dir / "tree_snapshot_metadata.json"
         exported_at_sec = None
         if meta_json.exists():
             try:
                 payload = json.loads(meta_json.read_text())
                 exported_at_sec = float(payload.get("exported_at_sec"))
+            except Exception:
+                exported_at_sec = None
+        if exported_at_sec is None and snapshot_meta_json.exists():
+            try:
+                payload = json.loads(snapshot_meta_json.read_text())
+                exported_at_sec = float(payload.get("saved_at_sec"))
             except Exception:
                 exported_at_sec = None
         if exported_at_sec is None:
@@ -1317,6 +1339,18 @@ def write_route_tree_svg(
     right = 30
     top = 55
     bottom = 75
+    legend_item_gap = 10
+    legend_text_char_w = 6.8
+    legend_items = [
+        {"kind": "route", "label": "rota da missão", "text_dx": 45},
+        {"kind": "gt", "label": "GT", "text_dx": 20},
+        {"kind": "detected", "label": "árvore detectada", "text_dx": 20},
+        {"kind": "start", "label": "início", "text_dx": 17},
+        {"kind": "end", "label": "fim", "text_dx": 17},
+        {"kind": "map_bbox", "label": "bbox do mapa", "text_dx": 18},
+    ]
+    if config_bbox:
+        legend_items.append({"kind": "config_bbox", "label": "bbox da exploração", "text_dx": 42})
     plot_w = width - left - right
     plot_h = height - top - bottom
 
@@ -1331,6 +1365,7 @@ def write_route_tree_svg(
     map_area = map_w * map_h
 
     lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
         '<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">'.format(width, height, width, height),
         '<rect width="100%" height="100%" fill="white" />',
         '<text x="{}" y="32" font-family="Arial" font-size="18" font-weight="bold">{}</text>'.format(left, title),
@@ -1354,7 +1389,7 @@ def write_route_tree_svg(
     )
     lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12" fill="#333">{}</text>'.format(left + 8, top + 16, map_info))
     if config_bbox:
-        cfg_info = "bbox configuracao XY: x[{:.1f},{:.1f}] y[{:.1f},{:.1f}] | area {:.1f} m2".format(
+        cfg_info = "bbox da exploração XY: x[{:.1f},{:.1f}] y[{:.1f},{:.1f}] | area {:.1f} m2".format(
             float(config_bbox["x_min"]),
             float(config_bbox["x_max"]),
             float(config_bbox["y_min"]),
@@ -1397,23 +1432,29 @@ def write_route_tree_svg(
         lines.append('<line x1="{:.2f}" y1="{:.2f}" x2="{:.2f}" y2="{:.2f}" stroke="{}" stroke-width="2" />'.format(x - 5, y + 5, x + 5, y - 5, color))
 
     legend_y = height - 42
-    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#444" stroke-width="2" />'.format(left, legend_y, left + 38, legend_y))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">rota de goals</text>'.format(left + 45, legend_y + 4))
-    lines.append('<circle cx="{}" cy="{}" r="6" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(left + 170, legend_y))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">GT</text>'.format(left + 184, legend_y + 4))
-    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#ff7f0e" stroke-width="2" />'.format(left + 230, legend_y - 5, left + 240, legend_y + 5))
-    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#ff7f0e" stroke-width="2" />'.format(left + 230, legend_y + 5, left + 240, legend_y - 5))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">arvore detectada</text>'.format(left + 250, legend_y + 4))
-    lines.append('<circle cx="{}" cy="{}" r="5" fill="#2ca02c" />'.format(left + 390, legend_y))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">inicio</text>'.format(left + 402, legend_y + 4))
-    lines.append('<circle cx="{}" cy="{}" r="5" fill="#d62728" />'.format(left + 460, legend_y))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">fim</text>'.format(left + 472, legend_y + 4))
-    lines.append('<rect x="{:.1f}" y="{:.1f}" width="12" height="12" fill="none" stroke="#333" stroke-width="1.5" />'.format(left + 520, legend_y - 6))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">bbox mapa (analise)</text>'.format(left + 538, legend_y + 4))
-    lines.append('<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#9467bd" stroke-width="2" stroke-dasharray="7,5" />'.format(left + 700, legend_y, left + 736, legend_y))
-    lines.append('<text x="{}" y="{}" font-family="Arial" font-size="12">bbox configuracao</text>'.format(left + 742, legend_y + 4))
+    legend_x = float(left)
+    for item in legend_items:
+        label = item["label"]
+        text_x = legend_x + item["text_dx"]
+        if item["kind"] == "route":
+            lines.append('<line x1="{:.1f}" y1="{}" x2="{:.1f}" y2="{}" stroke="#444" stroke-width="2" />'.format(legend_x, legend_y, legend_x + 38.0, legend_y))
+        elif item["kind"] == "gt":
+            lines.append('<circle cx="{:.1f}" cy="{}" r="6" fill="none" stroke="#1f77b4" stroke-width="2" />'.format(legend_x + 6.0, legend_y))
+        elif item["kind"] == "detected":
+            lines.append('<line x1="{:.1f}" y1="{:.1f}" x2="{:.1f}" y2="{:.1f}" stroke="#ff7f0e" stroke-width="2" />'.format(legend_x, legend_y - 5.0, legend_x + 10.0, legend_y + 5.0))
+            lines.append('<line x1="{:.1f}" y1="{:.1f}" x2="{:.1f}" y2="{:.1f}" stroke="#ff7f0e" stroke-width="2" />'.format(legend_x, legend_y + 5.0, legend_x + 10.0, legend_y - 5.0))
+        elif item["kind"] == "start":
+            lines.append('<circle cx="{:.1f}" cy="{}" r="5" fill="#2ca02c" />'.format(legend_x + 5.0, legend_y))
+        elif item["kind"] == "end":
+            lines.append('<circle cx="{:.1f}" cy="{}" r="5" fill="#d62728" />'.format(legend_x + 5.0, legend_y))
+        elif item["kind"] == "map_bbox":
+            lines.append('<rect x="{:.1f}" y="{:.1f}" width="12" height="12" fill="none" stroke="#333" stroke-width="1.5" />'.format(legend_x, legend_y - 6.0))
+        elif item["kind"] == "config_bbox":
+            lines.append('<line x1="{:.1f}" y1="{}" x2="{:.1f}" y2="{}" stroke="#9467bd" stroke-width="2" stroke-dasharray="7,5" />'.format(legend_x, legend_y, legend_x + 36.0, legend_y))
+        lines.append('<text x="{:.1f}" y="{}" font-family="Arial" font-size="12">{}</text>'.format(text_x, legend_y + 4, label))
+        legend_x = text_x + (len(label) * legend_text_char_w) + legend_item_gap
     lines.append("</svg>")
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
@@ -1636,36 +1677,8 @@ def write_summary_md(path: Path, exp_name: str, metrics: dict) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def try_extract_pkl_meta(pkl_path: Path, out_json: Path) -> Optional[str]:
-    if not pkl_path.exists():
-        return None
-    try:
-        with pkl_path.open("rb") as f:
-            try:
-                data = pickle.load(f)
-            except UnicodeDecodeError:
-                f.seek(0)
-                data = pickle.load(f, encoding="latin1")
-        meta = {}
-        if isinstance(data, dict):
-            obj = data.get("meta", {})
-            if isinstance(obj, dict):
-                meta = obj
-        out_json.write_text(json.dumps(meta, indent=2, sort_keys=True))
-        return None
-    except Exception as exc:
-        return str(exc)
-
-
 def resolve_default_path(primary: Path, fallback: Path) -> Path:
     return primary if primary.exists() else fallback
-
-
-def matched_png_for_pkl(pkl_path: Path) -> Optional[Path]:
-    candidate = pkl_path.with_suffix(".png")
-    if candidate.exists() and candidate.is_file():
-        return candidate
-    return None
 
 
 def clean_stale_input_copies(exp_dir: Path, input_names: Sequence[str]) -> None:
@@ -1673,7 +1686,7 @@ def clean_stale_input_copies(exp_dir: Path, input_names: Sequence[str]) -> None:
         candidate = exp_dir / name
         if candidate.exists() and candidate.is_file():
             candidate.unlink()
-    for pattern in ("octomap_*.bt", "tree_cluster_state_*.pkl", "tree_cluster_state_*.png"):
+    for pattern in ("octomap_*.bt", "tree_cluster_state*.png", "tree_snapshot_metadata*.json"):
         for candidate in exp_dir.glob(pattern):
             if candidate.is_file():
                 candidate.unlink()
@@ -1691,28 +1704,22 @@ def main() -> int:
     env_snapshots_dir = os.environ.get("EXPERIMENT_SNAPSHOT_DIR", "").strip()
     env_octomaps_dir = os.environ.get("EXPERIMENT_OCTOMAP_DIR", "").strip()
     host_data_dir = Path(env_data_dir) if env_data_dir else Path("/home/daep/data")
-    host_snapshots_dir = Path(env_snapshots_dir) if env_snapshots_dir else Path("/home/daep/tree_snapshots")
+    host_snapshots_dir = Path(env_snapshots_dir) if env_snapshots_dir else Path("/home/daep/snapshots")
     host_octomaps_dir = Path(env_octomaps_dir) if env_octomaps_dir else Path("/home/daep/octomaps")
     host_base_out = Path(env_run_dir).parent if env_run_dir else Path("/home/daep/experimentos")
     host_planner_config = Path("/home/daep/catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml")
-    host_ti_scripts = Path("/home/daep/catkin_ws/src/tree_identifier/scripts")
-    host_svg_pkl_plotter = Path("/home/daep/meus-resultados/plot_pickle_svg.py")
 
     local_data_dir = script_dir / "data"
-    local_snapshots_dir = script_dir / "tree_snapshots"
+    local_snapshots_dir = script_dir / "snapshots"
     local_octomaps_dir = script_dir / "octomaps"
     local_base_out = script_dir / "experimentos"
     local_planner_config = script_dir / "catkin_ws/src/aeplanner/rpl_exploration/config/world_jean_exploration.yaml"
-    local_ti_scripts = script_dir / "catkin_ws/src/tree_identifier/scripts"
-    local_svg_pkl_plotter = script_dir / "meus-resultados/plot_pickle_svg.py"
 
     default_data_dir = resolve_default_path(host_data_dir, local_data_dir)
     default_snapshots_dir = resolve_default_path(host_snapshots_dir, local_snapshots_dir)
     default_octomaps_dir = resolve_default_path(host_octomaps_dir, local_octomaps_dir)
     default_base_out = resolve_default_path(host_base_out, local_base_out)
     default_planner_config = resolve_default_path(host_planner_config, local_planner_config)
-    default_ti_scripts = resolve_default_path(host_ti_scripts, local_ti_scripts)
-    default_svg_pkl_plotter = resolve_default_path(host_svg_pkl_plotter, local_svg_pkl_plotter)
 
     parser = argparse.ArgumentParser(
         description="Generate full experiment report and bundle artifacts into /experimentos/<subfolder>."
@@ -1720,8 +1727,13 @@ def main() -> int:
     parser.add_argument("--name", default="", help="Experiment subfolder name. Default: exp_YYYYmmdd_HHMMSS")
     parser.add_argument("--base-dir", default=str(default_base_out), help="Base output directory for experiment folders.")
     parser.add_argument("--data-dir", default=str(default_data_dir), help="Directory containing tree_map_final and logs.")
-    parser.add_argument("--snapshots-dir", default=str(default_snapshots_dir), help="Directory containing PKL snapshots.")
-    parser.add_argument("--runtime-snapshots-dir", default="", help="Directory containing manual/autosnapshot folders.")
+    parser.add_argument(
+        "--snapshots-dir",
+        "--runtime-snapshots-dir",
+        dest="snapshots_dir",
+        default=str(default_snapshots_dir),
+        help="Directory containing exported snapshot folders, for example snapshots/<tag>/tree_map_final.csv.",
+    )
     parser.add_argument("--octomaps-dir", default=str(default_octomaps_dir), help="Directory containing saved .bt files.")
     parser.add_argument("--planner-config", default=str(default_planner_config), help="Planner YAML with boundary/min and boundary/max.")
     parser.add_argument("--world-name", required=True, help="World name used by this run (required, no inference).")
@@ -1742,14 +1754,9 @@ def main() -> int:
         help="Ground-truth trunk diameter used for diameter error metrics (meters).",
     )
     parser.add_argument(
-        "--tree-identifier-scripts-dir",
-        default=str(default_ti_scripts),
-        help="Directory with world_tree_compare_plotter.py and tree_map_csv_plotter.py.",
-    )
-    parser.add_argument(
-        "--pkl-svg-plotter",
-        default=str(default_svg_pkl_plotter),
-        help="Optional plot_pickle_svg.py path for PKL SVG plots.",
+        "--tree-mapper-scripts-dir",
+        default="",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite folder if it already exists.")
     parser.add_argument("--copy-inputs", action="store_true", help="Also copy raw input files into the result folder.")
@@ -1760,7 +1767,6 @@ def main() -> int:
     base_dir = Path(args.base_dir).expanduser().resolve()
     data_dir = Path(args.data_dir).expanduser().resolve()
     snapshots_dir = Path(args.snapshots_dir).expanduser().resolve()
-    runtime_snapshots_dir = Path(args.runtime_snapshots_dir).expanduser().resolve() if args.runtime_snapshots_dir.strip() else data_dir.parent / "snapshots"
     octomaps_dir = Path(args.octomaps_dir).expanduser().resolve()
 
     detected_run_dir = None
@@ -1780,8 +1786,7 @@ def main() -> int:
         base_dir = detected_run_dir
         exp_name = "result"
         data_dir = detected_run_dir / "data"
-        snapshots_dir = detected_run_dir / "tree_snapshots"
-        runtime_snapshots_dir = detected_run_dir / "snapshots"
+        snapshots_dir = detected_run_dir / "snapshots"
         octomaps_dir = detected_run_dir / "octomaps"
         if not args.copy_inputs:
             args.clean_output = True
@@ -1794,8 +1799,6 @@ def main() -> int:
     exp_dir.mkdir(parents=True, exist_ok=True)
 
     planner_config_path = Path(args.planner_config).expanduser().resolve()
-    ti_scripts_dir = Path(args.tree_identifier_scripts_dir).expanduser().resolve()
-    pkl_svg_plotter = Path(args.pkl_svg_plotter).expanduser().resolve()
 
     manifest = {
         "experiment_name": exp_name,
@@ -1806,8 +1809,7 @@ def main() -> int:
         "inputs": {},
         "input_dirs": {
             "data_dir": str(data_dir),
-            "tree_snapshots_dir": str(snapshots_dir),
-            "runtime_snapshots_dir": str(runtime_snapshots_dir),
+            "snapshots_dir": str(snapshots_dir),
             "octomaps_dir": str(octomaps_dir),
         },
         "generated_files": {},
@@ -1838,31 +1840,23 @@ def main() -> int:
             print("Missing required file: {}".format(src), file=sys.stderr)
             return 1
 
-    latest_pkl = latest_file(snapshots_dir, "*.pkl")
-    latest_png = latest_file(snapshots_dir, "*.png")
+    snapshot_run_dir = detected_run_dir if detected_run_dir else data_dir.parent
+    latest_png = latest_snapshot_artifact(snapshots_dir, snapshot_run_dir, "tree_cluster_state*.png")
+    latest_snapshot_meta = latest_snapshot_artifact(snapshots_dir, snapshot_run_dir, "tree_snapshot_metadata*.json")
     latest_bt = latest_file(octomaps_dir, "*.bt")
 
-    if latest_pkl:
-        if args.copy_inputs:
-            copy_file(latest_pkl, exp_dir, manifest["inputs"], key="latest_snapshot_pkl")
-        else:
-            register_input_file(latest_pkl, manifest["inputs"], key="latest_snapshot_pkl")
-    else:
-        manifest["warnings"].append("No PKL found in snapshots dir.")
-    if latest_pkl:
-        matched_png = matched_png_for_pkl(latest_pkl)
-        if matched_png:
-            if args.copy_inputs:
-                copy_file(matched_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
-            else:
-                register_input_file(matched_png, manifest["inputs"], key="latest_snapshot_png")
-        else:
-            manifest["warnings"].append("No PNG found matching latest PKL snapshot name.")
-    elif latest_png:
+    if latest_png:
         if args.copy_inputs:
             copy_file(latest_png, exp_dir, manifest["inputs"], key="latest_snapshot_png")
         else:
             register_input_file(latest_png, manifest["inputs"], key="latest_snapshot_png")
+    else:
+        manifest["warnings"].append("No snapshot PNG found in snapshots dir.")
+    if latest_snapshot_meta:
+        if args.copy_inputs:
+            copy_file(latest_snapshot_meta, exp_dir, manifest["inputs"], key="latest_snapshot_metadata_json")
+        else:
+            register_input_file(latest_snapshot_meta, manifest["inputs"], key="latest_snapshot_metadata_json")
     if latest_bt:
         if args.copy_inputs:
             copy_file(latest_bt, exp_dir, manifest["inputs"], key="latest_octomap_bt")
@@ -1876,7 +1870,6 @@ def main() -> int:
     path_csv_path = (exp_dir / "path.csv") if args.copy_inputs else (data_dir / "path.csv")
     rrt_tree_log_path = (exp_dir / "rrt_tree_log.csv") if args.copy_inputs else (data_dir / "rrt_tree_log.csv")
     rrt_goal_log_path = (exp_dir / "rrt_goal_log.csv") if args.copy_inputs else (data_dir / "rrt_goal_log.csv")
-    pkl_input_path = (exp_dir / latest_pkl.name) if (args.copy_inputs and latest_pkl) else latest_pkl
 
     world_name = args.world_name.strip()
     if not world_name:
@@ -1891,35 +1884,6 @@ def main() -> int:
 
     register_input_file(ground_truth_csv_path, manifest["inputs"], key="ground_truth_csv")
     manifest["inputs"]["ground_truth_csv"]["world_name"] = world_name
-
-    has_numpy = importlib.util.find_spec("numpy") is not None
-
-    if pkl_svg_plotter.exists() and latest_pkl and has_numpy:
-        try:
-            cluster_svg = exp_dir / "tree_cluster_state_clusters.svg"
-            run_cmd(
-                [
-                    "python3",
-                    str(pkl_svg_plotter),
-                    str(pkl_input_path),
-                    "--output-prefix",
-                    str(exp_dir / "tree_cluster_state"),
-                ]
-            )
-            if cluster_svg.exists() and cluster_svg.stat().st_size < 100:
-                manifest["warnings"].append(
-                    "PKL cluster SVG appears empty (very small file). Install numpy/matplotlib in runtime env for full PKL plotting."
-                )
-        except Exception as exc:
-            manifest["warnings"].append("PKL SVG plotter failed: {}".format(exc))
-    elif latest_pkl and (not has_numpy):
-        manifest["warnings"].append("Numpy not available: skipped PKL SVG plotting and PKL meta extraction.")
-
-    pkl_error = None
-    if latest_pkl and has_numpy:
-        pkl_error = try_extract_pkl_meta(pkl_input_path, exp_dir / "pkl_meta.json")
-        if pkl_error:
-            manifest["warnings"].append("PKL meta extraction failed: {}".format(pkl_error))
 
     truth_rows = load_truth(ground_truth_csv_path)
     map_rows = load_map(map_csv_path)
@@ -1956,7 +1920,7 @@ def main() -> int:
 
     snapshot_paths = []
     snapshot_summary, snapshot_rows = compute_snapshot_metrics(
-        runtime_snapshots_dir,
+        snapshots_dir,
         truth_rows,
         selected_threshold_m=args.match_threshold,
     )
@@ -1966,7 +1930,7 @@ def main() -> int:
         write_snapshot_summary_csv(snapshot_summary_path, snapshot_rows)
         snapshot_paths = [snapshot_summary_path]
     else:
-        manifest["warnings"].append("No runtime snapshots with tree_map_final.csv found; skipped snapshot summary.")
+        manifest["warnings"].append("No snapshots with tree_map_final.csv found; skipped snapshot summary.")
 
     route_paths = []
     config_bbox = load_config_xy_bbox(planner_config_path)
@@ -1994,7 +1958,7 @@ def main() -> int:
             truth_rows,
             map_rows,
             goals,
-            "{}: route, detections and ground truth".format(exp_name),
+            "Rota da missão, árvores detectadas e ground truth",
             plot_x_min,
             plot_x_max,
             plot_y_min,

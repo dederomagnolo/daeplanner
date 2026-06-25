@@ -130,14 +130,11 @@ save_octomap_now() {
   mkdir -p "${EXPERIMENT_OCTOMAP_DIR}"
 
   local saver_cmd=(rosrun octomap_server octomap_saver -f "${out_file}" "octomap_full:=${octomap_topic}")
-  local attempt
-  for attempt in 1 2 3; do
-    if timeout 10s "${saver_cmd[@]}" >/dev/null && [[ -s "${out_file}" ]]; then
-      echo "[finalize] octomap saved: ${out_file}"
-      return 0
-    fi
-    echo "[finalize] octomap save failed (try ${attempt}/3)" >&2
-  done
+  if timeout 10s "${saver_cmd[@]}" >/dev/null && [[ -s "${out_file}" ]]; then
+    echo "[finalize] octomap saved: ${out_file}"
+    return 0
+  fi
+  echo "[finalize] octomap save failed (try 1/1)" >&2
   echo "[finalize] failed to save octomap: ${out_file}" >&2
   return 1
 }
@@ -246,7 +243,7 @@ cmd_init() {
   EXPERIMENT_RUN_DIR="${base_dir}/${run_id}"
   EXPERIMENT_DATA_DIR="${EXPERIMENT_RUN_DIR}/data"
   EXPERIMENT_SOURCE_DATA_DIR="${EXPERIMENT_DATA_DIR}"
-  EXPERIMENT_SNAPSHOT_DIR="${EXPERIMENT_RUN_DIR}/tree_snapshots"
+  EXPERIMENT_SNAPSHOT_DIR="${EXPERIMENT_RUN_DIR}/snapshots"
   EXPERIMENT_OCTOMAP_DIR="${EXPERIMENT_RUN_DIR}/octomaps"
   EXPERIMENT_OCTOMAP_TOPIC="/aeplanner/octomap_full"
   EXPERIMENT_RESULT_DIR="${EXPERIMENT_RUN_DIR}/result"
@@ -258,7 +255,6 @@ cmd_init() {
     "${EXPERIMENT_DATA_DIR}" \
     "${EXPERIMENT_SNAPSHOT_DIR}" \
     "${EXPERIMENT_OCTOMAP_DIR}" \
-    "${EXPERIMENT_RUN_DIR}/snapshots" \
     "${EXPERIMENT_RESULT_DIR}" \
     "${EXPERIMENT_RUN_DIR}/logs"
 
@@ -606,7 +602,6 @@ cmd_finalize() {
     --base-dir "${EXPERIMENT_RUN_DIR}" \
     --data-dir "${EXPERIMENT_DATA_DIR}" \
     --snapshots-dir "${EXPERIMENT_SNAPSHOT_DIR}" \
-    --runtime-snapshots-dir "${EXPERIMENT_RUN_DIR}/snapshots" \
     --octomaps-dir "${EXPERIMENT_OCTOMAP_DIR}" \
     --overwrite \
     --clean-output \

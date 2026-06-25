@@ -14,10 +14,8 @@ It does not need ROS, numpy, matplotlib, octomaps, point clouds, or PKLs.
 import argparse
 import csv
 import fnmatch
-import importlib.util
 import json
 import math
-import pickle
 import re
 import sys
 from datetime import datetime
@@ -53,22 +51,6 @@ def default_base_dir():
 
 def default_output_dir():
     return repo_root() / "daep" / "experimentos" / "tree_discovery_comparison"
-
-
-def pickle_helper_path():
-    return repo_root() / "daep" / "meus-resultados" / "plot_pickle_svg.py"
-
-
-def load_pickle_helper():
-    path = pickle_helper_path()
-    if not path.exists():
-        return None
-    spec = importlib.util.spec_from_file_location("plot_pickle_svg", str(path))
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def relpath(path, start=None):
@@ -234,40 +216,9 @@ def parse_snapshot_tag(tag):
     return None, None
 
 
-def read_tree_snapshot_pkl(path, helper=None):
-    path = Path(path)
-    data = None
-    try:
-        with path.open("rb") as f:
-            data = pickle.load(f, encoding="latin1")
-    except Exception:
-        if helper is not None:
-            try:
-                data = helper.load_data(path)
-            except Exception:
-                data = None
-
-    if not isinstance(data, dict):
-        return None
-
-    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-    confirmed = data.get("map_confirmed") or []
-    candidates = data.get("map_candidates") or []
-    saved_at_sec = float_or_none(meta.get("saved_at_sec"))
-    return {
-        "total_count": len(confirmed) + len(candidates),
-        "confirmed_count": len(confirmed),
-        "candidate_count": len(candidates),
-        "suspect_merge_count": 0,
-        "csv_time_sec": saved_at_sec,
-        "max_last_seen_sec": None,
-    }
-
-
-def gather_raw_points(run_dir, include_final=True, include_pkl=True):
+def gather_raw_points(run_dir, include_final=True):
     run_dir = Path(run_dir)
     raw = []
-    helper = load_pickle_helper() if include_pkl else None
 
     snapshots_dir = run_dir / "snapshots"
     if snapshots_dir.exists():
@@ -283,25 +234,6 @@ def gather_raw_points(run_dir, include_final=True, include_pkl=True):
                         "tag_seconds": tag_seconds,
                         "wall_epoch": wall_epoch,
                         "source_path": csv_path,
-                    }
-                )
-                raw.append(row)
-
-    if include_pkl:
-        tree_snapshot_dir = run_dir / "tree_snapshots"
-        if tree_snapshot_dir.exists():
-            for pkl_path in sorted(tree_snapshot_dir.glob("*.pkl")):
-                row = read_tree_snapshot_pkl(pkl_path, helper=helper)
-                if row is None:
-                    continue
-                tag_seconds, wall_epoch = parse_snapshot_tag(pkl_path.stem)
-                row.update(
-                    {
-                        "source_kind": "tree_snapshot",
-                        "snapshot_tag": pkl_path.stem,
-                        "tag_seconds": tag_seconds,
-                        "wall_epoch": wall_epoch,
-                        "source_path": pkl_path,
                     }
                 )
                 raw.append(row)
@@ -412,9 +344,9 @@ def add_cumulative_counts(points):
         point["cumulative_confirmed_count"] = running_confirmed
 
 
-def gather_run(run_dir, include_final=True, include_pkl=True):
+def gather_run(run_dir, include_final=True):
     meta = load_run_meta(run_dir)
-    raw_points = gather_raw_points(run_dir, include_final=include_final, include_pkl=include_pkl)
+    raw_points = gather_raw_points(run_dir, include_final=include_final)
     assign_times(raw_points, created_wall_epoch=meta.get("created_wall_epoch"))
     points = compress_points(raw_points)
     return {
@@ -817,7 +749,6 @@ def main(argv=None):
     parser.add_argument("--metric", choices=("confirmed", "total"), default="confirmed", help="Count used for curves and threshold times.")
     parser.add_argument("--target-count", type=int, default=None, help="Ground-truth target count for percentage timing.")
     parser.add_argument("--no-final", action="store_true", help="Do not include data/tree_map_final.csv as the final point.")
-    parser.add_argument("--no-pkl", action="store_true", help="Do not include tree_snapshots/*.pkl points.")
     args = parser.parse_args(argv)
 
     run_dirs = select_run_dirs(args.base_dir, args.runs, args.include, args.exclude)
@@ -826,7 +757,7 @@ def main(argv=None):
         return 2
 
     runs = [
-        gather_run(path, include_final=not args.no_final, include_pkl=not args.no_pkl)
+        gather_run(path, include_final=not args.no_final)
         for path in run_dirs
     ]
     runs = [run for run in runs if run["points"]]

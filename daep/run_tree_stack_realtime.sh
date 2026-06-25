@@ -49,6 +49,8 @@ extract_xy_bounds_from_planner_config() {
 #   ./run_tree_stack_realtime.sh [input_cloud_topic] [target_frame] [csv_out] [json_out] [snapshot_dir] [experiment_seed]
 #
 # Tree/map histories are taken from the active run context when available.
+# snapshot_dir is kept only as the default/fallback location used by external snapshot capture helpers.
+# Detector/tracker/fuser tuning comes from TREE_MAPPER_CONFIG_YAML.
 # Defaults are tuned for the usual DAEPlanner setup and axis range used in your plots.
 
 input_cloud_topic="${1:-/camera/depth/points}"
@@ -64,7 +66,7 @@ source .bashrc
 load_experiment_context
 
 default_data_dir="${EXPERIMENT_DATA_DIR:-/home/daep/experimentos/adhoc/data}"
-default_snapshot_dir="${EXPERIMENT_SNAPSHOT_DIR:-/home/daep/tree_snapshots}"
+default_snapshot_dir="${EXPERIMENT_SNAPSHOT_DIR:-/home/daep/snapshots}"
 csv_out="${3:-${TREE_MAP_CSV_OUT:-${default_data_dir}/tree_map_final.csv}}"
 json_out="${4:-${TREE_MAP_JSON_OUT:-${default_data_dir}/tree_map_final.json}}"
 snapshot_dir="${5:-${default_snapshot_dir}}"
@@ -73,6 +75,18 @@ tree_map_history_out="${TREE_MAP_HISTORY_CSV_OUT:-${default_data_dir}/tree_map_h
 tree_detection_history_out="${TREE_DETECTION_HISTORY_CSV_OUT:-${default_data_dir}/tree_detection_history.csv}"
 run_id="${EXPERIMENT_RUN_ID:-}"
 planner_config_path="${EXPERIMENT_PLANNER_CONFIG:-}"
+tree_mapper_config_yaml="${TREE_MAPPER_CONFIG_YAML:-/home/daep/catkin_ws/src/tree_mapper/config/daeplanner.yaml}"
+if [[ ! -f "${tree_mapper_config_yaml}" ]]; then
+  echo "[tree_stack] error: TREE_MAPPER_CONFIG_YAML not found: ${tree_mapper_config_yaml}" >&2
+  exit 1
+fi
+runtime_run_dir="${TREE_MAPPER_RUN_DIR:-${EXPERIMENT_RUN_DIR:-}}"
+if [[ -z "${runtime_run_dir}" ]]; then
+  csv_parent="$(dirname "${csv_out}")"
+  if [[ "$(basename "${csv_parent}")" == "data" ]]; then
+    runtime_run_dir="$(dirname "${csv_parent}")"
+  fi
+fi
 
 x_min_plot=""
 x_max_plot=""
@@ -89,6 +103,9 @@ mkdir -p "$(dirname "${json_out}")"
 mkdir -p "$(dirname "${tree_map_history_out}")"
 mkdir -p "$(dirname "${tree_detection_history_out}")"
 mkdir -p "${snapshot_dir}"
+if [[ -n "${runtime_run_dir}" ]]; then
+  mkdir -p "${runtime_run_dir}"
+fi
 
 echo "[tree_stack] input_cloud_topic=${input_cloud_topic}"
 echo "[tree_stack] target_frame=${target_frame}"
@@ -98,24 +115,31 @@ echo "[tree_stack] tree_map_history_out=${tree_map_history_out}"
 echo "[tree_stack] tree_detection_history_out=${tree_detection_history_out}"
 echo "[tree_stack] snapshot_dir=${snapshot_dir}"
 echo "[tree_stack] experiment_seed=${experiment_seed}"
+echo "[tree_stack] config_yaml=${tree_mapper_config_yaml}"
+echo "[tree_stack] runtime_run_dir=${runtime_run_dir:-"(auto)"}"
 echo "[tree_stack] planner_config=${planner_config_path}"
 echo "[tree_stack] plot_bounds_xy_plus5: x=[${x_min_plot}, ${x_max_plot}] y=[${y_min_plot}, ${y_max_plot}]"
 if [[ -n "${run_id}" ]]; then
   echo "[tree_stack] run_id=${run_id}"
 fi
 
-roslaunch tree_identifier tree_stack.launch \
+roslaunch tree_mapper tree_stack_runtime.launch \
+  config_yaml:="${tree_mapper_config_yaml}" \
   input_cloud_topic:="${input_cloud_topic}" \
   target_frame:="${target_frame}" \
   run_plotter:="${run_plotter}" \
   run_cluster_plotter:="${run_cluster_plotter}" \
   run_fuser:="${run_fuser}" \
+  run_snapshot_exporter:=true \
+  run_shrub_detector:=false \
+  run_shrub_fuser:=false \
   experiment_seed:="${experiment_seed}" \
+  run_output_dir:="${runtime_run_dir}" \
+  run_id:="${run_id}" \
   fuser_csv_output_path:="${csv_out}" \
   fuser_json_output_path:="${json_out}" \
   fuser_history_csv_output_path:="${tree_map_history_out}" \
   detector_history_csv_output_path:="${tree_detection_history_out}" \
-  cluster_plotter_snapshot_dir:="${snapshot_dir}" \
   fixed_axes:=true \
   x_min:="${x_min_plot}" x_max:="${x_max_plot}" \
   y_min:="${y_min_plot}" y_max:="${y_max_plot}"
